@@ -11,6 +11,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import os
+from pathlib import Path
 
 # Import project modules
 from data import generate_synthetic_data, get_node_summary
@@ -72,9 +73,18 @@ def load_data():
 
 @st.cache_resource
 def load_model(df):
-    """Train and cache model."""
+    """Load cached model artifact, or train and create it."""
+    model_dir = Path("artifacts")
+    model_path = model_dir / "blood_logistics_ebm.pkl"
+
     model = BloodLogisticsModel()
-    model.train(df)
+    if model_path.exists():
+        model.load(model_path)
+        return model
+
+    model_dir.mkdir(parents=True, exist_ok=True)
+    model.train(df, backend="ebm")
+    model.save(model_path)
     return model
 
 
@@ -287,6 +297,32 @@ def main():
             # Get local SHAP explanation
             X = df[model.feature_names].copy()
             explanation = model.get_local_explanation(X, node_idx)
+            
+            # Waterfall chart for local explanation path
+            st.subheader("Waterfall Contribution Path")
+            waterfall_features = explanation.head(10).copy()
+            waterfall_labels = waterfall_features["feature"].tolist() + ["Total"]
+            waterfall_values = waterfall_features["shap_value"].tolist() + [waterfall_features["shap_value"].sum()]
+            waterfall_measures = ["relative"] * len(waterfall_features) + ["total"]
+
+            wf_fig = go.Figure(
+                go.Waterfall(
+                    measure=waterfall_measures,
+                    x=waterfall_labels,
+                    y=waterfall_values,
+                    connector={"line": {"color": "rgb(160,160,160)"}},
+                    increasing={"marker": {"color": "#dc3545"}},
+                    decreasing={"marker": {"color": "#28a745"}},
+                    totals={"marker": {"color": "#1f77b4"}},
+                )
+            )
+            wf_fig.update_layout(
+                title="Top Local Feature Contributions",
+                xaxis_title="Feature",
+                yaxis_title="Contribution",
+                showlegend=False,
+            )
+            st.plotly_chart(wf_fig, use_container_width=True)
             
             # Top features bar chart
             st.subheader("📊 Top Feature Contributions (SHAP Values)")

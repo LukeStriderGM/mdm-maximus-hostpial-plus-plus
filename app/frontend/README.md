@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# Frontend + EBM API Integration
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+## React + TypeScript + Vite
 
-Currently, two official plugins are available:
+This frontend uses the Vite React TypeScript template.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## EBM Backend Integration
 
-## React Compiler
+A Flask API for the DHA RESCUE EBM model is available at:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `app/frontend/flask_ebm_api.py`
 
-## Expanding the ESLint configuration
+### Prerequisites
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- Trained model artifact exists at:
+  - `dha_rescue/artifacts/blood_logistics_ebm.pkl`
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+### Run API
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+python app/frontend/flask_ebm_api.py
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Server starts on `http://localhost:5000`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### API Endpoints
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- `GET /health`
+- `POST /predict`
+- `POST /explain/local?index=0`
+- `GET /explain/global`
+- `POST /explain/waterfall?index=0&top_k=10`
+
+### Example prediction request
+
+```bash
+curl -X POST http://localhost:5000/predict ^
+  -H "Content-Type: application/json" ^
+  -d "{\"records\":[{\"node_id\":\"SPOKE_9\",\"node_name\":\"Forward Node\",\"inventory_units\":40,\"expiry_hours_remaining\":48,\"temperature_excursion_flag\":0,\"transport_delay_hours\":10,\"route_reliability_score\":0.75,\"demand_rate\":4,\"casualty_rate\":3.5,\"cold_chain_health_score\":0.85,\"backup_supply_available\":1}]}"
 ```

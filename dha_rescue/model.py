@@ -6,6 +6,7 @@ Primary model module used by the Streamlit app.
 Behavior:
 - Uses XGBoost when available
 - Falls back to RandomForest when XGBoost is unavailable
+- Supports EBM backend for a single explainable artifact
 - Uses SHAP explanations when available, otherwise proxy explanations
 """
 
@@ -38,11 +39,17 @@ try:
 except ImportError:  # pragma: no cover
     shap = None
 
+try:
+    from interpret.glassbox import ExplainableBoostingClassifier, ExplainableBoostingRegressor
+except ImportError:  # pragma: no cover
+    ExplainableBoostingClassifier = None
+    ExplainableBoostingRegressor = None
+
 
 class BloodLogisticsModel:
     """ML model for blood logistics failure prediction."""
 
-    def __init__(self):
+    def __init__(self, backend: str = "auto"):
         self.classifier = None
         self.regressor = None
         self.explainer = None
@@ -53,6 +60,9 @@ class BloodLogisticsModel:
         self.is_trained = False
         self.classifier_name = None
         self.regressor_name = None
+        self.backend = backend
+        self.shap_backend = None
+        self.shap_index = None
 
     def _coerce_shap_matrix(self, shap_output) -> np.ndarray | None:
         """Normalize SHAP output into shape (n_samples, n_features)."""
@@ -105,8 +115,26 @@ class BloodLogisticsModel:
         y_regression = df["time_to_failure"].astype(float).values
         return X, y_classification, y_regression
 
-    def _init_models(self, random_state: int) -> None:
-        if xgb is not None:
+    def _init_models(self, random_state: int, backend: str | None = None) -> None:
+        selected = (backend or self.backend or "auto").lower()
+
+        if selected in {"ebm", "auto"} and ExplainableBoostingClassifier is not None and ExplainableBoostingRegressor is not None:
+            self.classifier = ExplainableBoostingClassifier(
+                interactions=0,
+                random_state=random_state,
+                n_jobs=1,
+            )
+            self.regressor = ExplainableBoostingRegressor(
+                interactions=0,
+                random_state=random_state,
+                n_jobs=1,
+            )
+            self.classifier_name = "ebm_classifier"
+            self.regressor_name = "ebm_regressor"
+            self.backend = "ebm"
+            return
+
+        if selected in {"xgb", "xgboost", "auto"} and xgb is not None:
             self.classifier = xgb.XGBClassifier(
                 n_estimators=200,
                 max_depth=6,
@@ -126,6 +154,7 @@ class BloodLogisticsModel:
             )
             self.classifier_name = "xgboost_classifier"
             self.regressor_name = "xgboost_regressor"
+            self.backend = "xgboost"
         else:
             self.classifier = RandomForestClassifier(
                 n_estimators=300,
@@ -140,22 +169,52 @@ class BloodLogisticsModel:
             )
             self.classifier_name = "random_forest_classifier"
             self.regressor_name = "random_forest_regressor"
+            self.backend = "random_forest"
 
     def _compute_explanations(self, X_background: pd.DataFrame) -> None:
         """Initialize explainability backend."""
         self.explainer = None
         self.shap_values = None
+        self.shap_backend = None
+        self.shap_index = None
+
+        # For EBM, use model-agnostic SHAP when available.
+        if self.backend == "ebm":
+            if shap is None:
+                return
+            try:
+                bg = X_background.sample(n=min(50, len(X_background)), random_state=42)
+                eval_rows = X_background.sample(n=min(120, len(X_background)), random_state=43)
+
+                def _pred_fn(arr):
+                    arr_df = pd.DataFrame(arr, columns=self.feature_names)
+                    return self.classifier.predict_proba(arr_df)[:, 1]
+
+                self.explainer = shap.KernelExplainer(_pred_fn, bg.values)
+                raw_sv = self.explainer.shap_values(eval_rows.values)
+                self.shap_values = self._coerce_shap_matrix(raw_sv)
+                self.shap_index = eval_rows.index.to_numpy()
+                self.shap_backend = "kernel"
+            except Exception:
+                self.explainer = None
+                self.shap_values = None
+                self.shap_index = None
+                self.shap_backend = None
+            return
+
         if shap is None:
             return
         try:
             self.explainer = shap.TreeExplainer(self.classifier)
             raw_sv = self.explainer.shap_values(X_background)
             self.shap_values = self._coerce_shap_matrix(raw_sv)
+            self.shap_backend = "tree"
         except Exception:
             self.explainer = None
             self.shap_values = None
+            self.shap_backend = None
 
-    def train(self, df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42):
+    def train(self, df: pd.DataFrame, test_size: float = 0.2, random_state: int = 42, backend: str | None = None):
         """Train both classification and regression models."""
         print("=" * 60)
         print("DHA RESCUE: Training ML Models")
@@ -177,7 +236,7 @@ class BloodLogisticsModel:
         print(f"\nTraining set: {len(X_train)} samples")
         print(f"Test set: {len(X_test)} samples")
 
-        self._init_models(random_state=random_state)
+        self._init_models(random_state=random_state, backend=backend)
 
         print(f"\n[1/3] Training classifier: {self.classifier_name}")
         self.classifier.fit(X_train, y_class_train)
@@ -196,7 +255,9 @@ class BloodLogisticsModel:
 
         print("\n[3/3] Initializing explainability...")
         self._compute_explanations(X_test)
-        if self.shap_values is not None:
+        if self.backend == "ebm":
+            print("   EBM native explanations available.")
+        elif self.shap_values is not None:
             print(f"   SHAP values computed for {len(self.shap_values)} samples")
         else:
             print("   SHAP unavailable; using model-based proxy explanations.")
@@ -251,6 +312,33 @@ class BloodLogisticsModel:
         X_sample = X.iloc[[index]]
         values = X_sample.values[0]
 
+        if self.backend == "ebm" and hasattr(self.classifier, "explain_local"):
+            # Prefer SHAP values when available for the selected row.
+            if self.shap_values is not None and self.shap_index is not None:
+                matched = np.where(self.shap_index == X_sample.index[0])[0]
+                if len(matched) > 0:
+                    shap_vector = self.shap_values[int(matched[0])]
+                    explanation = pd.DataFrame(
+                        {
+                            "feature": self.feature_names,
+                            "value": values,
+                            "shap_value": shap_vector,
+                        }
+                    )
+                    explanation["abs_shap"] = np.abs(explanation["shap_value"])
+                    return explanation.sort_values("abs_shap", ascending=False)
+
+            exp = self.classifier.explain_local(X_sample)
+            d = exp.data(0)
+            names = d.get("names", [])
+            scores = d.get("scores", [])
+            local_df = pd.DataFrame({"feature": names, "shap_value": scores})
+            local_df = local_df[local_df["feature"].isin(self.feature_names)].copy()
+            value_map = {k: v for k, v in zip(self.feature_names, values)}
+            local_df["value"] = local_df["feature"].map(value_map)
+            local_df["abs_shap"] = np.abs(local_df["shap_value"])
+            return local_df.sort_values("abs_shap", ascending=False)
+
         shap_vector = None
         if self.explainer is not None:
             try:
@@ -281,6 +369,19 @@ class BloodLogisticsModel:
         if not self.is_trained:
             raise ValueError("Model not trained. Call train() first.")
 
+        if self.backend == "ebm" and hasattr(self.classifier, "term_importances"):
+            if self.shap_values is not None:
+                importance = np.abs(self.shap_values).mean(axis=0)
+                return (
+                    pd.DataFrame({"feature": self.feature_names, "importance": importance})
+                    .sort_values("importance", ascending=False)
+                    .reset_index(drop=True)
+                )
+            term_names = list(getattr(self.classifier, "term_names_", self.feature_names))
+            term_importance = np.asarray(self.classifier.term_importances(), dtype=float)
+            imp_df = pd.DataFrame({"feature": term_names, "importance": term_importance})
+            imp_df = imp_df[imp_df["feature"].isin(self.feature_names)].copy()
+            return imp_df.sort_values("importance", ascending=False).reset_index(drop=True)
         if self.shap_values is not None:
             importance = np.abs(self.shap_values).mean(axis=0)
         else:
@@ -297,16 +398,22 @@ class BloodLogisticsModel:
         if not self.is_trained:
             raise ValueError("Model not trained. Call train() first.")
 
+        # SHAP explainer objects (especially KernelExplainer callables) are often not pickle-safe.
+        explainer_to_save = None if self.shap_backend == "kernel" else self.explainer
+
         model_data = {
             "classifier": self.classifier,
             "regressor": self.regressor,
-            "explainer": self.explainer,
+            "explainer": explainer_to_save,
             "feature_names": self.feature_names,
             "shap_values": self.shap_values,
             "feature_means": self.feature_means,
             "feature_stds": self.feature_stds,
             "classifier_name": self.classifier_name,
             "regressor_name": self.regressor_name,
+            "backend": self.backend,
+            "shap_backend": self.shap_backend,
+            "shap_index": self.shap_index,
         }
         with open(filepath, "wb") as f:
             pickle.dump(model_data, f)
@@ -326,6 +433,9 @@ class BloodLogisticsModel:
         self.feature_stds = model_data.get("feature_stds")
         self.classifier_name = model_data.get("classifier_name")
         self.regressor_name = model_data.get("regressor_name")
+        self.backend = model_data.get("backend", "auto")
+        self.shap_backend = model_data.get("shap_backend")
+        self.shap_index = model_data.get("shap_index")
         self.is_trained = True
         print(f"Model loaded from {filepath}")
 
