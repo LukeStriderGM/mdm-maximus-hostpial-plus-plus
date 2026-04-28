@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { getHubs, getSpokes, type Hub, type Spoke } from "../lib/api";
+import { getHubs, getSpokes, type Hub, type Spoke, type PathResult } from "../lib/api";
+import { BestPathPanel } from "../components/BestPathPanel";
 
 class Toggle3DControl implements maplibregl.IControl {
   private container: HTMLDivElement | null = null;
@@ -67,11 +68,115 @@ export function MapView() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<maplibregl.Marker[]>([]);
+  const pathMarkersRef = useRef<maplibregl.Marker[]>([]);
   const navigate = useNavigate();
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [showPathPanel, setShowPathPanel] = useState(false);
+  const [routeDestination, setRouteDestination] = useState<{ id: string; type: string } | null>(null);
 
   const { data: hubs } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
   const { data: spokes } = useQuery({ queryKey: ["spokes"], queryFn: () => getSpokes() });
+
+  // Show best-path on map
+  const handleShowPath = useCallback((result: PathResult) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Clear old path markers
+    pathMarkersRef.current.forEach((m) => m.remove());
+    pathMarkersRef.current = [];
+
+    // Build GeoJSON for the path
+    const lineFeatures = result.steps.map((step, i) => ({
+      type: "Feature" as const,
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [step.from_lng, step.from_lat],
+          [step.to_lng, step.to_lat],
+        ],
+      },
+      properties: { index: i },
+    }));
+
+    // Waypoint circle markers at each intermediate node
+    const allCoords: [number, number][] = [];
+    if (result.steps.length > 0) {
+      allCoords.push([result.steps[0].from_lng, result.steps[0].from_lat]);
+    }
+    result.steps.forEach((s) => {
+      allCoords.push([s.to_lng, s.to_lat]);
+    });
+
+    // Add/update best-path source
+    const geojson = { type: "FeatureCollection" as const, features: lineFeatures };
+    if (map.getSource("best-path")) {
+      (map.getSource("best-path") as maplibregl.GeoJSONSource).setData(geojson);
+    } else {
+      map.addSource("best-path", { type: "geojson", data: geojson });
+      // Glow layer
+      map.addLayer({
+        id: "best-path-glow",
+        type: "line",
+        source: "best-path",
+        paint: {
+          "line-color": "#6c63ff",
+          "line-width": 8,
+          "line-opacity": 0.25,
+          "line-blur": 4,
+        },
+      });
+      // Main line
+      map.addLayer({
+        id: "best-path-line",
+        type: "line",
+        source: "best-path",
+        paint: {
+          "line-color": "#6c63ff",
+          "line-width": 3,
+          "line-opacity": 0.9,
+          "line-dasharray": [2, 1],
+        },
+      });
+    }
+
+    // Add waypoint pips
+    allCoords.forEach((coord, i) => {
+      const el = document.createElement("div");
+      const isEndpoint = i === 0 || i === allCoords.length - 1;
+      el.style.cssText = `
+        width: ${isEndpoint ? 12 : 8}px;
+        height: ${isEndpoint ? 12 : 8}px;
+        border-radius: 50%;
+        background: ${i === 0 ? "#22c55e" : i === allCoords.length - 1 ? "#6c63ff" : "#a78bfa"};
+        border: 2px solid white;
+        box-shadow: 0 0 6px rgba(108,99,255,0.6);
+      `;
+      const m = new maplibregl.Marker({ element: el })
+        .setLngLat(coord)
+        .addTo(map);
+      pathMarkersRef.current.push(m);
+    });
+
+    // Fit bounds
+    if (allCoords.length >= 2) {
+      const bounds = new maplibregl.LngLatBounds(allCoords[0], allCoords[0]);
+      allCoords.forEach((c) => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 80, duration: 1000 });
+    }
+  }, []);
+
+  const clearPath = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    pathMarkersRef.current.forEach((m) => m.remove());
+    pathMarkersRef.current = [];
+    if (map.getSource("best-path")) {
+      (map.getSource("best-path") as maplibregl.GeoJSONSource).setData({
+        type: "FeatureCollection", features: [],
+      });
+    }
+  }, []);
 
   // Initialize map
   useEffect(() => {
@@ -206,6 +311,11 @@ export function MapView() {
       el.addEventListener("mouseenter", () => popup.setLngLat([spoke.longitude, spoke.latitude]).addTo(mapRef.current!));
       el.addEventListener("mouseleave", () => popup.remove());
       el.addEventListener("click", () => navigate(`/spokes/${spoke.id}`));
+      el.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        setRouteDestination({ id: spoke.id, type: "spoke" });
+        setShowPathPanel(true);
+      });
       markersRef.current.push(marker);
     });
 
@@ -259,14 +369,36 @@ export function MapView() {
     <div className="relative w-[calc(100%+2rem)] h-[calc(100%+2rem)] -m-4">
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Legend */}
-      <div className="absolute bottom-6 left-20 bg-card/90 border border-border rounded-md px-3 py-2 text-xs backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-success inline-block" /> Operational</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-warning inline-block" /> Degraded</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-error inline-block" /> Critical</span>
-          <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" /> Offline</span>
+      {/* Best Path Panel */}
+      {showPathPanel && (
+        <BestPathPanel
+          onClose={() => { setShowPathPanel(false); clearPath(); setRouteDestination(null); }}
+          onShowPath={handleShowPath}
+          prefillDestination={routeDestination}
+        />
+      )}
+
+      {/* Bottom bar: Legend left, Best Path button right */}
+      <div className="absolute bottom-6 left-20 right-6 z-[1000] flex items-center justify-between pointer-events-none">
+        <div className="bg-card/90 border border-border rounded-md px-3 py-2 text-xs backdrop-blur-sm pointer-events-auto">
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-success inline-block" /> Operational</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-warning inline-block" /> Degraded</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-error inline-block" /> Critical</span>
+            <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-border-strong inline-block" /> Offline</span>
+          </div>
         </div>
+        {!showPathPanel && (
+          <button
+            onClick={() => setShowPathPanel(true)}
+            className="flex items-center gap-1.5 bg-card border border-border rounded-md px-3 py-2 text-xs font-medium text-text-primary shadow-lg hover:bg-hover transition-colors pointer-events-auto ml-3 shrink-0"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>
+            </svg>
+            Find Best Path
+          </button>
+        )}
       </div>
     </div>
   );
