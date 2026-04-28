@@ -81,20 +81,24 @@ export function Explainability() {
       }));
   }, [globalImp]);
 
-  // Waterfall chart data — diverging bar chart
-  const waterfallData = useMemo(() => {
-    if (!waterfall?.steps) return [];
-    return waterfall.steps.map((s) => ({
-      feature: s.feature.length > 18 ? s.feature.slice(0, 18) : s.feature,
-      contribution: Math.round(s.contribution * 10000) / 10000,
-    }));
+  const waterfallRange = useMemo(() => {
+    if (!waterfall?.steps?.length) return { min: -1, max: 1 };
+    const vals = [
+      waterfall.base_value,
+      waterfall.final_value,
+      ...waterfall.steps.flatMap((s) => [s.start, s.end]),
+    ];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = (max - min) * 0.1 || 0.1;
+    return { min: min - pad, max: max + pad };
   }, [waterfall]);
 
   const modelUnavailable = health && !health.model_loaded;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-text">Model Explainability</h2>
+      <h2 className="text-lg font-semibold text-text">Glassbox Model Explainability</h2>
 
       {/* Model Health */}
       <div className="grid grid-cols-4 gap-4">
@@ -104,27 +108,27 @@ export function Explainability() {
           status={health?.model_loaded ? "success" : "error"}
         />
         <StatCard
-          label="Backend"
-          value={health?.model_backend || "none"}
+          label="Model Type"
+          value={health?.model_backend ? "Glassbox Predictive Model" : "none"}
           status={health?.model_loaded ? "default" : "error"}
         />
         <StatCard
-          label="Classifier"
-          value={health?.classifier || "none"}
+          label="Risk Engine"
+          value={health?.classifier ? "Supply Failure Risk Scoring" : "none"}
           status="default"
         />
         <StatCard
-          label="Regressor"
-          value={health?.regressor || "none"}
+          label="Forecast Engine"
+          value={health?.regressor ? "Time-to-Failure Forecasting" : "none"}
           status="default"
         />
       </div>
 
       {modelUnavailable && (
         <div className="bg-warning/10 border border-warning/30 rounded-md px-4 py-3 text-sm text-warning-text">
-          EBM model not loaded. Train the artifact with:{" "}
+          Glassbox model not loaded. Train the artifact with:{" "}
           <code className="bg-surface px-1.5 py-0.5 rounded text-xs">
-            cd dha_rescue && python train_ebm_pkl.py
+            cd ml_models && python train_ebm_pkl.py
           </code>{" "}
           then set <code className="bg-surface px-1.5 py-0.5 rounded text-xs">EBM_MODEL_PATH</code>.
         </div>
@@ -147,7 +151,7 @@ export function Explainability() {
       </Panel>
 
       {/* Node Risk Predictor */}
-      <Panel title="Node Risk Predictor">
+      <Panel title="Node Risk Prediction">
         <div className="flex items-end gap-4 mb-4">
           <div className="flex-1">
             <label className="block text-xs text-text-secondary mb-1">Select Node</label>
@@ -212,14 +216,14 @@ export function Explainability() {
       {/* Waterfall Explanation */}
       {waterfall && (
         <Panel
-          title="Prediction Waterfall — Feature Contributions"
+          title="Decision Waterfall — What Drove the Risk Score"
           actions={
             <span className="text-xs text-text-secondary">
-              Base: {waterfall.base_value.toFixed(4)} | Final: {waterfall.final_value.toFixed(4)}
+              Starting Score: {waterfall.base_value.toFixed(4)} | Final Score: {waterfall.final_value.toFixed(4)}
             </span>
           }
         >
-          {waterfallData.length > 0 ? (
+          {waterfall.steps.length > 0 ? (
             <>
               <div className="flex items-center gap-4 mb-3 text-xs text-text-secondary">
                 <span className="flex items-center gap-1.5">
@@ -229,12 +233,36 @@ export function Explainability() {
                   <span className="w-2.5 h-2.5 rounded-sm bg-success inline-block" /> Decreases risk
                 </span>
               </div>
-              <BarChart
-                data={waterfallData}
-                xKey="feature"
-                bars={[{ key: "contribution", color: "#ff5286", label: "Contribution" }]}
-                height={280}
-              />
+              <div className="space-y-2 rounded border border-border p-3 bg-surface">
+                {waterfall.steps.map((s) => {
+                  const denom = waterfallRange.max - waterfallRange.min || 1;
+                  const startPct = ((s.start - waterfallRange.min) / denom) * 100;
+                  const endPct = ((s.end - waterfallRange.min) / denom) * 100;
+                  const left = Math.min(startPct, endPct);
+                  const width = Math.max(Math.abs(endPct - startPct), 0.8);
+                  const zeroPct = ((0 - waterfallRange.min) / denom) * 100;
+                  const color = s.contribution >= 0 ? "#d10e5c" : "#1a7f4b";
+
+                  return (
+                    <div key={s.feature} className="grid grid-cols-[220px_1fr_90px] items-center gap-3">
+                      <div className="text-xs text-text">{s.feature}</div>
+                      <div className="relative h-7 rounded bg-canvas border border-border/60 overflow-hidden">
+                        <div
+                          className="absolute top-0 bottom-0 w-px bg-border-strong/80"
+                          style={{ left: `${Math.min(Math.max(zeroPct, 0), 100)}%` }}
+                        />
+                        <div
+                          className="absolute top-1 bottom-1 rounded"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }}
+                        />
+                      </div>
+                      <div className={`text-right text-xs font-mono ${s.contribution >= 0 ? "text-error-text" : "text-success-text"}`}>
+                        {s.contribution >= 0 ? "+" : ""}{s.contribution.toFixed(4)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
               {/* Detailed breakdown table */}
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-xs">
@@ -271,3 +299,4 @@ export function Explainability() {
     </div>
   );
 }
+
