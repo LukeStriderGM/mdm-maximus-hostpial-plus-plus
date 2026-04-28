@@ -29,7 +29,18 @@ def _normalize_async_url(url: str) -> str:
 
 DATABASE_URL = _normalize_async_url(DATABASE_URL)
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Pool config tuned for managed Postgres (Replit / Neon-style):
+# - pool_pre_ping: validate each connection before use, transparently
+#   replacing ones the server has closed (idle timeout, restarts, network
+#   blips). Eliminates "asyncpg.InterfaceError: connection is closed".
+# - pool_recycle: proactively recycle connections after 30 minutes, well
+#   under typical server-side idle timeouts.
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

@@ -31,8 +31,18 @@ Configured as a **Reserved VM** deployment (the app uses WebSockets on
 `/ws/events`, which are unreliable on Autoscale because instances spin down
 on idle).
 
-- **Build:** `uv sync --frozen && cd app/frontend && npm ci && npm run build`
+- **Build:** `uv sync --frozen` → train EBM artifact if missing
+  (`ml_models/artifacts/blood_logistics_ebm.pkl`) → `npm ci && npm run build`
 - **Run:** `cd app/backend && uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 5000`
+
+The EBM `.pkl` artifact is gitignored, so the build command trains it on
+each deploy when it's missing (~10 s for 3 000 synthetic samples). The
+backend auto-discovers the artifact at `<repo>/ml_models/artifacts/`; set
+`EBM_MODEL_PATH` to override.
+
+The async SQLAlchemy engine uses `pool_pre_ping=True` and
+`pool_recycle=1800` so stale connections from managed Postgres don't
+surface as `InterfaceError: connection is closed`.
 
 The single uvicorn process serves both the API (`/api/v1`, `/ws/events`,
 `/healthz`) and the built SPA from `app/frontend/dist` on port 5000.
