@@ -1,0 +1,81 @@
+name: hospitalpp
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hospitalpp-postgres
+    environment:
+      POSTGRES_DB: hospitalpp
+      POSTGRES_USER: hospitalpp
+      POSTGRES_PASSWORD: hospitalpp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospitalpp -d hospitalpp"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  nats:
+    image: nats:2.10-alpine
+    container_name: hospitalpp-nats
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hospitalpp-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hospitalpp:hospitalpp@postgres:5432/hospitalpp
+      NATS_URL: nats://nats:4222
+      CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      DHA_RESCUE_DIR: /ml_models
+      EBM_MODEL_PATH: /ml_models/artifacts/blood_logistics_ebm.pkl
+    volumes:
+      - ../ml_models:/ml_models:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+    container_name: hospitalpp-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: hospitalpp-seed
+    profiles: ["seed"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hospitalpp:hospitalpp@postgres:5432/hospitalpp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["python", "seed.py"]
+    restart: "no"
+
+volumes:
+  postgres_data:
