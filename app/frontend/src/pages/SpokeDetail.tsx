@@ -44,6 +44,7 @@ const gapColumns: Column<DemandSupplyGap>[] = [
 
 export function SpokeDetail() {
   const { id } = useParams<{ id: string }>();
+  const qEnabled = !!id;
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | undefined>();
@@ -75,12 +76,12 @@ export function SpokeDetail() {
     },
   ];
 
-  const { data: spoke, isLoading } = useQuery({ queryKey: ["spoke", id], queryFn: () => getSpoke(id!) });
-  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }) });
-  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!) });
-  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!) });
-  const { data: gaps } = useQuery({ queryKey: ["gaps", id], queryFn: () => getDemandGap(id!) });
-  const { data: demands } = useQuery({ queryKey: ["demands", id], queryFn: () => getDemandSignals(id!) });
+  const { data: spoke, isLoading } = useQuery({ queryKey: ["spoke", id], queryFn: () => getSpoke(id!), enabled: qEnabled });
+  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }), enabled: qEnabled });
+  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!), enabled: qEnabled });
+  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!), enabled: qEnabled });
+  const { data: gaps } = useQuery({ queryKey: ["gaps", id], queryFn: () => getDemandGap(id!), enabled: qEnabled });
+  const { data: demands } = useQuery({ queryKey: ["demands", id], queryFn: () => getDemandSignals(id!), enabled: qEnabled });
 
   const mlRecord = useMemo<EBMRecordInput | null>(() => {
     if (!inventory || !spoke || !id) return null;
@@ -117,7 +118,16 @@ export function SpokeDetail() {
     queryKey: ["ml-waterfall", id, mlRecord?.inventory_units, mlRecord?.demand_rate],
     enabled: !!mlRecord,
     queryFn: async () => postEBMWaterfall([mlRecord as EBMRecordInput], 0, 3) as Promise<WaterfallResult>,
+    retry: 1,
   });
+
+  const failurePct = Number.isFinite(mlPrediction?.failure_probability)
+    ? (Number(mlPrediction?.failure_probability) * 100).toFixed(1)
+    : "n/a";
+  const ttfDays = Number.isFinite(mlPrediction?.time_to_failure_hours)
+    ? (Number(mlPrediction?.time_to_failure_hours) / 24).toFixed(1)
+    : "n/a";
+  const riskLabel = mlPrediction?.risk_level || "caution";
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>;
   if (!spoke) return <p className="text-text-secondary">Spoke not found</p>;
@@ -169,19 +179,19 @@ export function SpokeDetail() {
               <div className="bg-surface border border-border rounded p-3">
                 <p className="text-xs text-text-secondary mb-1">Predicted Failure Risk</p>
                 <p className="text-lg font-mono font-semibold text-text">
-                  {(mlPrediction.failure_probability * 100).toFixed(1)}%
+                  {failurePct}%
                 </p>
               </div>
               <div className="bg-surface border border-border rounded p-3">
                 <p className="text-xs text-text-secondary mb-1">Projected Time-to-Failure</p>
                 <p className="text-lg font-mono font-semibold text-text">
-                  {(mlPrediction.time_to_failure_hours / 24).toFixed(1)}d
+                  {ttfDays}d
                 </p>
               </div>
               <div className="bg-surface border border-border rounded p-3">
                 <p className="text-xs text-text-secondary mb-1">Model Risk Level</p>
                 <div className="mt-1">
-                  <StatusBadge status={mlPrediction.risk_level as "healthy" | "warning" | "critical"} />
+                  <StatusBadge status={riskLabel as "healthy" | "warning" | "critical" | "caution"} />
                 </div>
               </div>
             </div>
@@ -203,8 +213,8 @@ export function SpokeDetail() {
             )}
 
             <p className="text-sm text-text-secondary">
-              Executive Summary: This node is currently assessed as <span className="text-text font-medium">{mlPrediction.risk_level}</span>
-              {" "}risk with an estimated <span className="text-text font-medium">{(mlPrediction.time_to_failure_hours / 24).toFixed(1)} days</span>
+              Executive Summary: This node is currently assessed as <span className="text-text font-medium">{riskLabel}</span>
+              {" "}risk with an estimated <span className="text-text font-medium">{ttfDays} days</span>
               {" "}of resilience under current conditions. Continue operational monitoring and intervene if leading risk drivers worsen.
             </p>
           </div>
