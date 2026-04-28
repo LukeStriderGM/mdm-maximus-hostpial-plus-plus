@@ -17,8 +17,8 @@ import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { BarChart } from "../components/ui/BarChart";
 
-const RISK_UP_COLOR = "#E69F00";
-const RISK_DOWN_COLOR = "#56B4E9";
+const RISK_UP_COLOR = "#EF4444";
+const RISK_DOWN_COLOR = "#22C55E";
 
 export function Explainability() {
   const { data: health } = useQuery({ queryKey: ["ebm-health"], queryFn: getEBMHealth });
