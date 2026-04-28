@@ -30,7 +30,7 @@ services:
 
   backend:
     build:
-      context: ./backend
+      context: ./app/backend
       dockerfile: Dockerfile
     container_name: hospitalpp-backend
     environment:
@@ -40,7 +40,7 @@ services:
       DHA_RESCUE_DIR: /ml_models
       EBM_MODEL_PATH: /ml_models/artifacts/blood_logistics_ebm.pkl
     volumes:
-      - ../ml_models:/ml_models:ro
+      - ./ml_models:/ml_models:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -52,7 +52,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ./app/frontend
       dockerfile: Dockerfile
       args:
         VITE_API_URL: http://localhost:8000/api/v1
@@ -65,7 +65,7 @@ services:
 
   seed:
     build:
-      context: ./backend
+      context: ./app/backend
       dockerfile: Dockerfile
     container_name: hospitalpp-seed
     profiles: ["seed"]

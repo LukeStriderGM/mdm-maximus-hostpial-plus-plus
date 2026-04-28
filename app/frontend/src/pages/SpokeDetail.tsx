@@ -1,14 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getSpoke, getInventory, getInventoryEvents, getDaysOfSupply, getDemandGap, getDemandSignals } from "../lib/api";
+import {
+  getSpoke,
+  getInventory,
+  getInventoryEvents,
+  getDaysOfSupply,
+  getDemandGap,
+  getDemandSignals,
+  postEBMPredict,
+  postEBMWaterfall,
+  type EBMRecordInput,
+  type EBMPrediction,
+  type WaterfallResult,
+} from "../lib/api";
 import { Panel } from "../components/ui/Panel";
 import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { DataTable, type Column } from "../components/ui/DataTable";
-import { TimeSeriesChart } from "../components/ui/TimeSeriesChart";
-import { GaugeChart } from "../components/ui/GaugeChart";
-import { BarChart } from "../components/ui/BarChart";
 import { Spinner } from "../components/ui/Spinner";
 import { InventoryFormModal } from "../components/ui/InventoryFormModal";
 import { Pencil, Plus } from "lucide-react";
@@ -32,6 +41,7 @@ const gapColumns: Column<DemandSupplyGap>[] = [
 
 export function SpokeDetail() {
   const { id } = useParams<{ id: string }>();
+  const qEnabled = !!id;
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | undefined>();
@@ -63,32 +73,75 @@ export function SpokeDetail() {
     },
   ];
 
-  const { data: spoke, isLoading } = useQuery({ queryKey: ["spoke", id], queryFn: () => getSpoke(id!) });
-  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }) });
-  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!) });
-  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!) });
-  const { data: gaps } = useQuery({ queryKey: ["gaps", id], queryFn: () => getDemandGap(id!) });
-  const { data: demands } = useQuery({ queryKey: ["demands", id], queryFn: () => getDemandSignals(id!) });
+  const { data: spoke, isLoading } = useQuery({ queryKey: ["spoke", id], queryFn: () => getSpoke(id!), enabled: qEnabled });
+  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }), enabled: qEnabled });
+  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!), enabled: qEnabled });
+  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!), enabled: qEnabled });
+  const { data: gaps } = useQuery({ queryKey: ["gaps", id], queryFn: () => getDemandGap(id!), enabled: qEnabled });
+  const { data: demands } = useQuery({ queryKey: ["demands", id], queryFn: () => getDemandSignals(id!), enabled: qEnabled });
+
+  const mlRecord = useMemo<EBMRecordInput | null>(() => {
+    if (!inventory || !spoke || !id) return null;
+    const totalQty = inventory.reduce((sum, item) => sum + item.quantity_on_hand, 0);
+    const demandRate = Math.max(
+      demands?.reduce((sum, d) => sum + d.quantity_needed, 0) || totalQty / 30 || 1,
+      0.5
+    );
+    return {
+      node_id: id,
+      node_name: spoke.name,
+      inventory_units: totalQty,
+      demand_rate: demandRate,
+      expiry_hours_remaining: 720,
+      temperature_excursion_flag: 0,
+      transport_delay_hours: 4,
+      route_reliability_score: 0.85,
+      casualty_rate: 1,
+      cold_chain_health_score: 0.9,
+      backup_supply_available: 1,
+    };
+  }, [inventory, spoke, id, demands]);
+
+  const { data: mlPrediction } = useQuery({
+    queryKey: ["ml-predict", id, mlRecord?.inventory_units, mlRecord?.demand_rate],
+    enabled: !!mlRecord,
+    queryFn: async () => {
+      const rows = await postEBMPredict([mlRecord as EBMRecordInput]);
+      return rows[0] as EBMPrediction;
+    },
+  });
+
+  const { data: mlWaterfall } = useQuery({
+    queryKey: ["ml-waterfall", id, mlRecord?.inventory_units, mlRecord?.demand_rate],
+    enabled: !!mlRecord,
+    queryFn: async () => postEBMWaterfall([mlRecord as EBMRecordInput], 0, 3) as Promise<WaterfallResult>,
+    retry: 1,
+  });
+
+  const failurePct = Number.isFinite(mlPrediction?.failure_probability)
+    ? (Number(mlPrediction?.failure_probability) * 100).toFixed(1)
+    : "n/a";
+  const ttfDays = Number.isFinite(mlPrediction?.time_to_failure_hours)
+    ? (Number(mlPrediction?.time_to_failure_hours) / 24).toFixed(1)
+    : "n/a";
+  const riskLabel = mlPrediction?.risk_level || "caution";
+
+  const topDrivers = !mlWaterfall?.steps?.length
+    ? []
+    : [...mlWaterfall.steps]
+      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+      .slice(0, 3);
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>;
   if (!spoke) return <p className="text-text-secondary">Spoke not found</p>;
 
-  // Burn rate from events
-  const burnData = events?.filter((e) => e.event_type === "consume")
-    .reduce((acc, e) => {
-      const day = e.timestamp.split("T")[0];
-      const existing = acc.find((a) => a.timestamp === day);
-      if (existing) existing.consumed = (existing.consumed as number) + Math.abs(e.quantity_delta);
-      else acc.push({ timestamp: day, consumed: Math.abs(e.quantity_delta) });
-      return acc;
-    }, [] as Record<string, unknown>[]) || [];
+  // Events/charts are temporarily disabled while isolating hook mismatch.
+  void events;
 
-  // Gap chart data
-  const gapChartData = gaps?.map((g) => ({
-    product_type: g.product_type.slice(0, 15),
-    "On Hand": g.quantity_on_hand,
-    Demanded: g.quantity_demanded,
-  })) || [];
+  const criticalItems = (dos || []).filter((d) => d.risk_level === "critical").length;
+  const supplyGaps = (gaps || []).filter((g) => g.gap < 0).length;
+  const hasCriticalItems = (dos || []).some((d) => d.risk_level === "critical");
+  const hasSupplyGaps = (gaps || []).some((g) => g.gap < 0);
 
   return (
     <div className="space-y-4">
@@ -100,23 +153,19 @@ export function SpokeDetail() {
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="Total Items" value={inventory?.length || 0} />
         <StatCard label="Demand Signals" value={demands?.length || 0} />
-        <StatCard label="Critical Items" value={dos?.filter((d) => d.risk_level === "critical").length || 0}
-          status={dos?.some((d) => d.risk_level === "critical") ? "error" : "success"} />
-        <StatCard label="Supply Gaps" value={gaps?.filter((g) => g.gap < 0).length || 0}
-          status={gaps?.some((g) => g.gap < 0) ? "error" : "success"} />
+        <StatCard label="Critical Items" value={criticalItems}
+          status={hasCriticalItems ? "error" : "success"} />
+        <StatCard label="Supply Gaps" value={supplyGaps}
+          status={hasSupplyGaps ? "error" : "success"} />
       </div>
 
-      {/* Days of Supply Gauges */}
-      {dos && dos.length > 0 && (
-        <Panel title="Days of Supply">
-          <div className="flex flex-wrap gap-6 justify-center">
-            {dos.slice(0, 8).map((d) => (
-              <GaugeChart key={d.product_type} value={Math.min(d.days_remaining / 30 * 100, 100)}
-                label={d.product_type.slice(0, 20)} maxLabel={`${Math.round(d.days_remaining)}d`} />
-            ))}
-          </div>
-        </Panel>
-      )}
+      <Panel title="ML Insight">
+        <p className="text-text-secondary text-sm">
+          Risk: {riskLabel} | Failure: {failurePct}% | TTF: {ttfDays}d | Drivers: {topDrivers.length}
+        </p>
+      </Panel>
+
+      {/* Temporary isolation: charts disabled to identify hook mismatch source */}
 
       <Panel
         title="Inventory"
@@ -131,23 +180,10 @@ export function SpokeDetail() {
 
       <div className="grid grid-cols-2 gap-4">
         <Panel title="Burn Rate">
-          {burnData.length > 0 ? (
-            <TimeSeriesChart data={burnData} series={[{ key: "consumed", color: "#ff5286", label: "Units Consumed" }]} />
-          ) : (
-            <p className="text-text-disabled text-sm">No consumption data yet</p>
-          )}
+          <p className="text-text-disabled text-sm">Chart temporarily disabled</p>
         </Panel>
-
         <Panel title="Supply vs Demand">
-          {gapChartData.length > 0 ? (
-            <BarChart data={gapChartData} xKey="product_type"
-              bars={[
-                { key: "On Hand", color: "#6ccf8e", label: "On Hand" },
-                { key: "Demanded", color: "#ff5286", label: "Demanded" },
-              ]} />
-          ) : (
-            <p className="text-text-disabled text-sm">No gap data</p>
-          )}
+          <p className="text-text-disabled text-sm">Chart temporarily disabled</p>
         </Panel>
       </div>
 
