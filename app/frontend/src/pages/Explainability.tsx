@@ -400,6 +400,15 @@ export function Explainability() {
                     <p>{explanationSummary.protection}</p>
                     <p className="text-text">{explanationSummary.action}</p>
                   </div>
+                  <div className="mt-3 rounded border border-border/70 bg-surface p-3 text-xs text-text-secondary">
+                    <p className="font-medium text-text mb-1">Layman Terms</p>
+                    <p>
+                      This panel is a simple reading of the model result. A low percent means low immediate
+                      disruption risk. More days to failure means you likely have time before urgent shortages.
+                      “Pushing risk up” are conditions that make failure more likely; “reducing risk” are
+                      conditions currently protecting this node.
+                    </p>
+                  </div>
                 </div>
               )}
             </>
