@@ -27,12 +27,15 @@ ml_models/         EBM model + companion training scripts
 
 ## How It Runs in Replit
 
-Two workflows are configured:
+A single **`Start application`** workflow runs both servers together:
 
-- **Backend** — `uvicorn main:app --host 0.0.0.0 --port 8000`
-  (cwd `app/backend`). Console output type.
-- **Frontend** — `npm run dev` on Vite (cwd `app/frontend`).
-  Port 5000 with `host: 0.0.0.0` and `allowedHosts: true` for the Replit
+```
+cd app/backend && uvicorn main:app --host 0.0.0.0 --port 8000 &
+cd app/frontend && exec npm run dev
+```
+
+- **Backend (FastAPI / uvicorn)** — `0.0.0.0:8000`
+- **Frontend (Vite)** — `0.0.0.0:5000`, `allowedHosts: true` for the Replit
   iframe proxy. Webview output type.
 
 The frontend dev server proxies:

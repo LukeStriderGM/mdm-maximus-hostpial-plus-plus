@@ -17,31 +17,15 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Backend"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Frontend"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "Backend"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "bash -c 'cd app/backend && uvicorn main:app --host 0.0.0.0 --port 8000'"
-waitForPort = 8000
-
-[[workflows.workflow]]
-name = "Frontend"
+name = "Start application"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "bash -c 'cd app/frontend && npm run dev'"
+args = "bash -lc 'cd app/backend && uvicorn main:app --host 0.0.0.0 --port 8000 & cd app/frontend && exec npm run dev'"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -50,10 +34,6 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 8000
-externalPort = 8000
 
 [deployment]
 deploymentTarget = "vm"
