@@ -25,6 +25,22 @@ ml/                Standalone ML training scripts (not required at runtime)
 ml_models/         EBM model + companion training scripts
 ```
 
+## Deployment (Production)
+
+Configured as a **Reserved VM** deployment (the app uses WebSockets on
+`/ws/events`, which are unreliable on Autoscale because instances spin down
+on idle).
+
+- **Build:** `uv sync --frozen && cd app/frontend && npm ci && npm run build`
+- **Run:** `cd app/backend && uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 5000`
+
+The single uvicorn process serves both the API (`/api/v1`, `/ws/events`,
+`/healthz`) and the built SPA from `app/frontend/dist` on port 5000.
+
+When publishing, make sure **Reserved VM** is selected in the Publish
+dialog — picking Autoscale will cause the build to abort silently because
+the configuration here targets VM.
+
 ## How It Runs in Replit
 
 A single **`Start application`** workflow runs both servers together:
