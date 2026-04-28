@@ -18,9 +18,6 @@ import { Panel } from "../components/ui/Panel";
 import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { DataTable, type Column } from "../components/ui/DataTable";
-import { TimeSeriesChart } from "../components/ui/TimeSeriesChart";
-import { GaugeChart } from "../components/ui/GaugeChart";
-import { BarChart } from "../components/ui/BarChart";
 import { Spinner } from "../components/ui/Spinner";
 import { InventoryFormModal } from "../components/ui/InventoryFormModal";
 import { Pencil, Plus } from "lucide-react";
@@ -129,32 +126,22 @@ export function SpokeDetail() {
     : "n/a";
   const riskLabel = mlPrediction?.risk_level || "caution";
 
+  const topDrivers = !mlWaterfall?.steps?.length
+    ? []
+    : [...mlWaterfall.steps]
+      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+      .slice(0, 3);
+
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>;
   if (!spoke) return <p className="text-text-secondary">Spoke not found</p>;
 
-  // Burn rate from events
-  const burnData = events?.filter((e) => e.event_type === "consume")
-    .reduce((acc, e) => {
-      const day = e.timestamp.split("T")[0];
-      const existing = acc.find((a) => a.timestamp === day);
-      if (existing) existing.consumed = (existing.consumed as number) + Math.abs(e.quantity_delta);
-      else acc.push({ timestamp: day, consumed: Math.abs(e.quantity_delta) });
-      return acc;
-    }, [] as Record<string, unknown>[]) || [];
+  // Events/charts are temporarily disabled while isolating hook mismatch.
+  void events;
 
-  // Gap chart data
-  const gapChartData = gaps?.map((g) => ({
-    product_type: g.product_type.slice(0, 15),
-    "On Hand": g.quantity_on_hand,
-    Demanded: g.quantity_demanded,
-  })) || [];
-
-  const topDrivers = useMemo(() => {
-    if (!mlWaterfall?.steps?.length) return [];
-    return [...mlWaterfall.steps]
-      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-      .slice(0, 3);
-  }, [mlWaterfall]);
+  const criticalItems = (dos || []).filter((d) => d.risk_level === "critical").length;
+  const supplyGaps = (gaps || []).filter((g) => g.gap < 0).length;
+  const hasCriticalItems = (dos || []).some((d) => d.risk_level === "critical");
+  const hasSupplyGaps = (gaps || []).some((g) => g.gap < 0);
 
   return (
     <div className="space-y-4">
@@ -166,74 +153,19 @@ export function SpokeDetail() {
       <div className="grid grid-cols-4 gap-4">
         <StatCard label="Total Items" value={inventory?.length || 0} />
         <StatCard label="Demand Signals" value={demands?.length || 0} />
-        <StatCard label="Critical Items" value={dos?.filter((d) => d.risk_level === "critical").length || 0}
-          status={dos?.some((d) => d.risk_level === "critical") ? "error" : "success"} />
-        <StatCard label="Supply Gaps" value={gaps?.filter((g) => g.gap < 0).length || 0}
-          status={gaps?.some((g) => g.gap < 0) ? "error" : "success"} />
+        <StatCard label="Critical Items" value={criticalItems}
+          status={hasCriticalItems ? "error" : "success"} />
+        <StatCard label="Supply Gaps" value={supplyGaps}
+          status={hasSupplyGaps ? "error" : "success"} />
       </div>
 
       <Panel title="ML Insight">
-        {mlPrediction ? (
-          <div className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-surface border border-border rounded p-3">
-                <p className="text-xs text-text-secondary mb-1">Predicted Failure Risk</p>
-                <p className="text-lg font-mono font-semibold text-text">
-                  {failurePct}%
-                </p>
-              </div>
-              <div className="bg-surface border border-border rounded p-3">
-                <p className="text-xs text-text-secondary mb-1">Projected Time-to-Failure</p>
-                <p className="text-lg font-mono font-semibold text-text">
-                  {ttfDays}d
-                </p>
-              </div>
-              <div className="bg-surface border border-border rounded p-3">
-                <p className="text-xs text-text-secondary mb-1">Model Risk Level</p>
-                <div className="mt-1">
-                  <StatusBadge status={riskLabel as "healthy" | "warning" | "critical" | "caution"} />
-                </div>
-              </div>
-            </div>
-
-            {topDrivers.length > 0 && (
-              <div className="rounded border border-border bg-canvas p-3">
-                <p className="text-xs text-text-secondary mb-2">Top 3 Risk Drivers (SHAP)</p>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  {topDrivers.map((d) => (
-                    <div key={d.feature} className="rounded bg-surface px-2 py-1 border border-border/70">
-                      <p className="text-text">{d.feature}</p>
-                      <p className={d.contribution >= 0 ? "text-red-400 font-mono text-xs" : "text-green-400 font-mono text-xs"}>
-                        {d.contribution >= 0 ? "+" : ""}{d.contribution.toFixed(3)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <p className="text-sm text-text-secondary">
-              Executive Summary: This node is currently assessed as <span className="text-text font-medium">{riskLabel}</span>
-              {" "}risk with an estimated <span className="text-text font-medium">{ttfDays} days</span>
-              {" "}of resilience under current conditions. Continue operational monitoring and intervene if leading risk drivers worsen.
-            </p>
-          </div>
-        ) : (
-          <p className="text-text-disabled text-sm">ML insights will appear once inventory data is available.</p>
-        )}
+        <p className="text-text-secondary text-sm">
+          Risk: {riskLabel} | Failure: {failurePct}% | TTF: {ttfDays}d | Drivers: {topDrivers.length}
+        </p>
       </Panel>
 
-      {/* Days of Supply Gauges */}
-      {dos && dos.length > 0 && (
-        <Panel title="Days of Supply">
-          <div className="flex flex-wrap gap-6 justify-center">
-            {dos.slice(0, 8).map((d) => (
-              <GaugeChart key={d.product_type} value={Math.min(d.days_remaining / 30 * 100, 100)}
-                label={d.product_type.slice(0, 20)} maxLabel={`${Math.round(d.days_remaining)}d`} />
-            ))}
-          </div>
-        </Panel>
-      )}
+      {/* Temporary isolation: charts disabled to identify hook mismatch source */}
 
       <Panel
         title="Inventory"
@@ -248,23 +180,10 @@ export function SpokeDetail() {
 
       <div className="grid grid-cols-2 gap-4">
         <Panel title="Burn Rate">
-          {burnData.length > 0 ? (
-            <TimeSeriesChart data={burnData} series={[{ key: "consumed", color: "#ff5286", label: "Units Consumed" }]} />
-          ) : (
-            <p className="text-text-disabled text-sm">No consumption data yet</p>
-          )}
+          <p className="text-text-disabled text-sm">Chart temporarily disabled</p>
         </Panel>
-
         <Panel title="Supply vs Demand">
-          {gapChartData.length > 0 ? (
-            <BarChart data={gapChartData} xKey="product_type"
-              bars={[
-                { key: "On Hand", color: "#6ccf8e", label: "On Hand" },
-                { key: "Demanded", color: "#ff5286", label: "Demanded" },
-              ]} />
-          ) : (
-            <p className="text-text-disabled text-sm">No gap data</p>
-          )}
+          <p className="text-text-disabled text-sm">Chart temporarily disabled</p>
         </Panel>
       </div>
 
