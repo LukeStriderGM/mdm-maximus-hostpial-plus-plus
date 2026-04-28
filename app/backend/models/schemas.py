@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 
 # --- Enums as strings for API ---
@@ -292,9 +292,8 @@ class IngestionResult(BaseModel):
 
 class BestPathRequest(BaseModel):
     destination_node_id: str
-    destination_node_type: str  # "hub" | "spoke"
     product_type: str
-    priority: str = "routine"  # routine | urgent | emergency
+    priority: Literal["routine", "urgent", "emergency"] = "routine"
     max_results: int = Field(default=3, ge=1, le=10)
 
 

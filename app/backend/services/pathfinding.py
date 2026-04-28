@@ -83,11 +83,14 @@ def _edge_weight(
     priority: str,
 ) -> float:
     """Compute edge weight incorporating status, risk, and priority."""
+    sp = STATUS_PENALTY.get(route_status, 1.0)
+    if sp == float("inf"):
+        return float("inf")
+    # Clamp transit to minimum 0.1h to avoid 0 * inf = NaN
+    transit_hours = max(transit_hours, 0.1)
     risk = _route_risk.assess_route_risk("", distance_km, transit_hours, transport_mode)
     risk_mult = {"low": 0.0, "medium": 0.3, "high": 0.7, "critical": 1.5}.get(risk.risk_level, 0.5)
-    sp = STATUS_PENALTY.get(route_status, 1.0)
     weight = transit_hours * sp * (1 + risk_mult)
-    # Emergency priority: prefer air transport
     if priority == "emergency" and transport_mode in ("fixed-wing", "rotary-wing"):
         weight *= 0.5
     return weight
@@ -179,7 +182,6 @@ def _dijkstra(
 async def find_best_paths(
     db: AsyncSession,
     destination_node_id: str,
-    destination_node_type: str,
     product_type: str,
     priority: str = "routine",
     max_results: int = 3,
@@ -201,19 +203,38 @@ async def find_best_paths(
     # 2. Build adjacency list
     adj: dict[str, list[_Edge]] = {nid: [] for nid in nodes}
 
+    # Track which spokes have explicit routes
+    spokes_with_routes: set[str] = set()
+
     for r in routes:
         status_str = r.status.value if hasattr(r.status, 'value') else r.status
         w = _edge_weight(r.transit_hours, r.distance_km, status_str, r.transport_mode, priority)
         # Bidirectional hub <-> spoke
         adj[r.hub_id].append(_Edge(r.spoke_id, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
         adj[r.spoke_id].append(_Edge(r.hub_id, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
+        spokes_with_routes.add(r.spoke_id)
+
+    # Fallback: create spoke <-> parent hub edges from Spoke.hub_id when no SupplyRoute exists
+    hub_node_map = {h.id: h for h in hubs}
+    GROUND_SPEED_KPH = 60.0
+    for s in spokes:
+        if s.id in spokes_with_routes:
+            continue
+        parent = hub_node_map.get(s.hub_id)
+        if not parent:
+            continue
+        dist_km = _haversine(s.latitude, s.longitude, parent.latitude, parent.longitude)
+        transit_h = max(dist_km / GROUND_SPEED_KPH, 0.5)  # minimum 30 min
+        w = _edge_weight(transit_h, dist_km, "available", "ground", priority)
+        adj[s.id].append(_Edge(parent.id, None, "ground", round(dist_km, 1), round(transit_h, 1), "available", w))
+        adj[parent.id].append(_Edge(s.id, None, "ground", round(dist_km, 1), round(transit_h, 1), "available", w))
 
     # Synthetic hub-to-hub edges
     hub_list = [h for h in hubs]
     for i, h1 in enumerate(hub_list):
         for h2 in hub_list[i + 1:]:
             dist_km = _haversine(h1.latitude, h1.longitude, h2.latitude, h2.longitude)
-            transit_h = dist_km / HUB_HUB_SPEED_KPH
+            transit_h = max(dist_km / HUB_HUB_SPEED_KPH, 0.25)  # minimum 15 min
             w = _edge_weight(transit_h, dist_km, "available", "fixed-wing", priority)
             adj[h1.id].append(_Edge(h2.id, None, "fixed-wing", dist_km, transit_h, "available", w))
             adj[h2.id].append(_Edge(h1.id, None, "fixed-wing", dist_km, transit_h, "available", w))

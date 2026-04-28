@@ -1,16 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  getHubs, getSpokes, postBestPath,
+  getHubs, getSpokes, getInventorySummary, postBestPath,
   type PathResult, type PathStep,
 } from "../lib/api";
 import { StatusBadge } from "./ui/StatusBadge";
-
-const PRODUCT_TYPES = [
-  "Surgical", "Exam", "Blood Collection", "Endotracheal", "Nasogastric",
-  "Tracheostomy", "Suction", "Centrifuge", "Culture", "Capillary",
-  "Feeding", "Gastrostomy", "Sterile",
-];
 
 const TRANSPORT_ICONS: Record<string, string> = {
   "fixed-wing": "plane",
@@ -171,6 +165,12 @@ function PathResultCard({
 export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestPathPanelProps) {
   const { data: hubs } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
   const { data: spokes } = useQuery({ queryKey: ["spokes"], queryFn: () => getSpokes() });
+  const { data: inventorySummary } = useQuery({ queryKey: ["inventory-summary"], queryFn: getInventorySummary });
+
+  const productTypes = useMemo(() => {
+    if (!inventorySummary) return [];
+    return inventorySummary.map((r) => r.product_type).sort();
+  }, [inventorySummary]);
 
   const [destId, setDestId] = useState(prefillDestination?.id || "");
   const [destType, setDestType] = useState(prefillDestination?.type || "");
@@ -242,7 +242,7 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
             className="w-full mt-0.5 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-info"
           >
             <option value="">Select product...</option>
-            {PRODUCT_TYPES.map((pt) => <option key={pt} value={pt}>{pt}</option>)}
+            {productTypes.map((pt) => <option key={pt} value={pt}>{pt}</option>)}
           </select>
         </div>
 
