@@ -107,6 +107,8 @@ export function Explainability() {
     return waterfall.steps;
   }, [waterfall, sortMode]);
 
+  const displayedWaterfallSteps = useMemo(() => waterfallSteps.slice(0, 5), [waterfallSteps]);
+
   const hoveredStep = useMemo(
     () => waterfallSteps.find((s) => s.feature === hoveredFeature) ?? waterfallSteps[0] ?? null,
     [waterfallSteps, hoveredFeature]
@@ -269,7 +271,7 @@ export function Explainability() {
             </span>
           }
         >
-          {waterfallSteps.length > 0 ? (
+          {displayedWaterfallSteps.length > 0 ? (
             <>
               <div className="flex items-center justify-between gap-4 mb-3">
                 <div className="flex items-center gap-4 text-xs text-text-secondary">
@@ -323,7 +325,7 @@ export function Explainability() {
               )}
 
               <div className="space-y-2 rounded border border-border p-3 bg-surface">
-                {waterfallSteps.map((s) => {
+                {displayedWaterfallSteps.map((s) => {
                   const denom = waterfallRange.max - waterfallRange.min || 1;
                   const startPct = ((s.start - waterfallRange.min) / denom) * 100;
                   const endPct = ((s.end - waterfallRange.min) / denom) * 100;
@@ -373,7 +375,7 @@ export function Explainability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {waterfallSteps.map((s) => (
+                    {displayedWaterfallSteps.map((s) => (
                       <tr key={s.feature} className="border-t border-border/50">
                         <td className="py-1.5 text-text">{s.feature}</td>
                         <td className="py-1.5 text-right text-text font-mono">
@@ -393,22 +395,12 @@ export function Explainability() {
 
               {explanationSummary && (
                 <div className="mt-4 rounded border border-border bg-canvas p-4">
-                  <h4 className="text-sm font-semibold text-text mb-2">What this means</h4>
-                  <div className="space-y-1.5 text-sm text-text-secondary">
-                    <p>{explanationSummary.headline}</p>
-                    <p>{explanationSummary.why}</p>
-                    <p>{explanationSummary.protection}</p>
-                    <p className="text-text">{explanationSummary.action}</p>
-                  </div>
-                  <div className="mt-3 rounded border border-border/70 bg-surface p-3 text-xs text-text-secondary">
-                    <p className="font-medium text-text mb-1">Layman Terms</p>
-                    <p>
-                      This panel is a simple reading of the model result. A low percent means low immediate
-                      disruption risk. More days to failure means you likely have time before urgent shortages.
-                      “Pushing risk up” are conditions that make failure more likely; “reducing risk” are
-                      conditions currently protecting this node.
-                    </p>
-                  </div>
+                  <h4 className="text-sm font-semibold text-text mb-2">Explanation</h4>
+                  <p className="text-sm text-text-secondary">
+                    {explanationSummary.headline} {explanationSummary.why} {explanationSummary.protection} {explanationSummary.action}{" "}
+                    In plain terms: a lower risk percent means lower immediate disruption risk, and more days to
+                    failure means more time before urgent shortage pressure.
+                  </p>
                 </div>
               )}
             </>
