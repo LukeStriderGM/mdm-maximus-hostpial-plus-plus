@@ -185,21 +185,6 @@ export function Explainability() {
         </div>
       )}
 
-      <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
-        {importanceData.length > 0 ? (
-          <BarChart
-            data={importanceData}
-            xKey="feature"
-            bars={[{ key: "importance", color: "#4D8DFF", label: "Importance" }]}
-            height={300}
-          />
-        ) : (
-          <p className="text-text-disabled text-sm py-8 text-center">
-            {modelUnavailable ? "Model not loaded." : "Loading feature importance..."}
-          </p>
-        )}
-      </Panel>
-
       <Panel title="Node Risk Prediction">
         <div className="flex items-end gap-4 mb-4">
           <div className="flex-1">
@@ -407,6 +392,21 @@ export function Explainability() {
           )}
         </Panel>
       )}
+
+      <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
+        {importanceData.length > 0 ? (
+          <BarChart
+            data={importanceData}
+            xKey="feature"
+            bars={[{ key: "importance", color: "#4D8DFF", label: "Importance" }]}
+            height={300}
+          />
+        ) : (
+          <p className="text-text-disabled text-sm py-8 text-center">
+            {modelUnavailable ? "Model not loaded." : "Loading feature importance..."}
+          </p>
+        )}
+      </Panel>
     </div>
   );
 }
