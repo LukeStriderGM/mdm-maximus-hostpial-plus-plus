@@ -7,7 +7,8 @@ from nats.js.api import StreamConfig, KeyValueConfig
 
 logger = logging.getLogger(__name__)
 
-NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
+NATS_URL = os.getenv("NATS_URL", "")
+NATS_ENABLED = bool(NATS_URL)
 
 
 class NatsService:
@@ -23,11 +24,16 @@ class NatsService:
         return self._connected and self._nc is not None and self._nc.is_connected
 
     async def connect(self):
+        if not NATS_ENABLED:
+            logger.info("NATS disabled (NATS_URL not set). Running without real-time events.")
+            self._connected = False
+            return
         try:
             self._nc = await nats.connect(
                 NATS_URL,
                 reconnect_time_wait=2,
-                max_reconnect_attempts=10,
+                max_reconnect_attempts=2,
+                connect_timeout=2,
                 error_cb=self._error_cb,
                 disconnected_cb=self._disconnected_cb,
                 reconnected_cb=self._reconnected_cb,
