@@ -31,6 +31,8 @@ export function Explainability() {
   const [prediction, setPrediction] = useState<EBMPrediction | null>(null);
   const [waterfall, setWaterfall] = useState<WaterfallResult | null>(null);
   const [inputRecord, setInputRecord] = useState<EBMRecordInput | null>(null);
+  const [hoveredFeature, setHoveredFeature] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<"model_order" | "impact_desc">("model_order");
 
   const allNodes = useMemo(() => {
     const nodes: { id: string; name: string; type: string }[] = [];
@@ -60,6 +62,7 @@ export function Explainability() {
 
       const wf = await postEBMWaterfall([record], 0, 10);
       setWaterfall(wf);
+      setHoveredFeature(wf.steps?.[0]?.feature ?? null);
 
       return pred;
     },
@@ -70,7 +73,6 @@ export function Explainability() {
     predictMutation.mutate(selectedNode);
   };
 
-  // Global importance chart data
   const importanceData = useMemo(() => {
     if (!globalImp?.importance) return [];
     return globalImp.importance
@@ -94,13 +96,25 @@ export function Explainability() {
     return { min: min - pad, max: max + pad };
   }, [waterfall]);
 
+  const waterfallSteps = useMemo(() => {
+    if (!waterfall?.steps) return [];
+    if (sortMode === "impact_desc") {
+      return [...waterfall.steps].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+    }
+    return waterfall.steps;
+  }, [waterfall, sortMode]);
+
+  const hoveredStep = useMemo(
+    () => waterfallSteps.find((s) => s.feature === hoveredFeature) ?? waterfallSteps[0] ?? null,
+    [waterfallSteps, hoveredFeature]
+  );
+
   const modelUnavailable = health && !health.model_loaded;
 
   return (
     <div className="space-y-4">
       <h2 className="text-lg font-semibold text-text">Glassbox Model Explainability</h2>
 
-      {/* Model Health */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
           label="Model Status"
@@ -134,7 +148,6 @@ export function Explainability() {
         </div>
       )}
 
-      {/* Global Feature Importance */}
       <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
         {importanceData.length > 0 ? (
           <BarChart
@@ -150,14 +163,13 @@ export function Explainability() {
         )}
       </Panel>
 
-      {/* Node Risk Predictor */}
       <Panel title="Node Risk Prediction">
         <div className="flex items-end gap-4 mb-4">
           <div className="flex-1">
             <label className="block text-xs text-text-secondary mb-1">Select Node</label>
             <select
               value={selectedNode}
-              onChange={(e) => { setSelectedNode(e.target.value); setPrediction(null); setWaterfall(null); }}
+              onChange={(e) => { setSelectedNode(e.target.value); setPrediction(null); setWaterfall(null); setHoveredFeature(null); }}
               className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
             >
               <option value="">Choose a node...</option>
@@ -206,35 +218,75 @@ export function Explainability() {
             <div className="bg-surface border border-border rounded p-3">
               <p className="text-xs text-text-secondary mb-1">Inventory Input</p>
               <p className="text-xl font-mono font-bold text-text">
-                {inputRecord?.inventory_units.toLocaleString() || "—"}
+                {inputRecord?.inventory_units.toLocaleString() || "-"}
               </p>
             </div>
           </div>
         )}
       </Panel>
 
-      {/* Waterfall Explanation */}
       {waterfall && (
         <Panel
-          title="Decision Waterfall — What Drove the Risk Score"
+          title="SHAP Waterfall - What Drove the Risk Score"
           actions={
             <span className="text-xs text-text-secondary">
               Starting Score: {waterfall.base_value.toFixed(4)} | Final Score: {waterfall.final_value.toFixed(4)}
             </span>
           }
         >
-          {waterfall.steps.length > 0 ? (
+          {waterfallSteps.length > 0 ? (
             <>
-              <div className="flex items-center gap-4 mb-3 text-xs text-text-secondary">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-error inline-block" /> Increases risk
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-success inline-block" /> Decreases risk
-                </span>
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-4 text-xs text-text-secondary">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-error inline-block" /> Increases risk
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm bg-success inline-block" /> Decreases risk
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <label htmlFor="waterfall-sort" className="text-text-secondary">Sort</label>
+                  <select
+                    id="waterfall-sort"
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as "model_order" | "impact_desc")}
+                    className="bg-canvas border border-border rounded px-2 py-1 text-text"
+                  >
+                    <option value="model_order">Model order</option>
+                    <option value="impact_desc">Largest impact first</option>
+                  </select>
+                </div>
               </div>
+
+              {hoveredStep && (
+                <div className="mb-3 rounded border border-border bg-canvas p-3 text-xs">
+                  <p className="text-text-secondary mb-1">Selected Driver</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <p className="text-text-secondary">Feature</p>
+                      <p className="font-medium text-text">{hoveredStep.feature}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Input Value</p>
+                      <p className="font-mono text-text">{hoveredStep.value != null ? hoveredStep.value.toFixed(2) : "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Risk Shift</p>
+                      <p className={`font-mono font-semibold ${hoveredStep.contribution >= 0 ? "text-error-text" : "text-success-text"}`}>
+                        {hoveredStep.contribution >= 0 ? "+" : ""}{hoveredStep.contribution.toFixed(4)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Score Path</p>
+                      <p className="font-mono text-text">{hoveredStep.start.toFixed(4)} -> {hoveredStep.end.toFixed(4)}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2 rounded border border-border p-3 bg-surface">
-                {waterfall.steps.map((s) => {
+                {waterfallSteps.map((s) => {
                   const denom = waterfallRange.max - waterfallRange.min || 1;
                   const startPct = ((s.start - waterfallRange.min) / denom) * 100;
                   const endPct = ((s.end - waterfallRange.min) / denom) * 100;
@@ -242,10 +294,20 @@ export function Explainability() {
                   const width = Math.max(Math.abs(endPct - startPct), 0.8);
                   const zeroPct = ((0 - waterfallRange.min) / denom) * 100;
                   const color = s.contribution >= 0 ? "#d10e5c" : "#1a7f4b";
+                  const isActive = hoveredStep?.feature === s.feature;
 
                   return (
-                    <div key={s.feature} className="grid grid-cols-[220px_1fr_90px] items-center gap-3">
-                      <div className="text-xs text-text">{s.feature}</div>
+                    <button
+                      type="button"
+                      key={s.feature}
+                      onMouseEnter={() => setHoveredFeature(s.feature)}
+                      onFocus={() => setHoveredFeature(s.feature)}
+                      onClick={() => setHoveredFeature(s.feature)}
+                      className={`w-full grid grid-cols-[220px_1fr_90px] items-center gap-3 text-left rounded px-1 py-1 transition ${
+                        isActive ? "bg-canvas/70 ring-1 ring-primary/40" : "hover:bg-canvas/40"
+                      }`}
+                    >
+                      <div className="text-xs text-text truncate">{s.feature}</div>
                       <div className="relative h-7 rounded bg-canvas border border-border/60 overflow-hidden">
                         <div
                           className="absolute top-0 bottom-0 w-px bg-border-strong/80"
@@ -259,11 +321,11 @@ export function Explainability() {
                       <div className={`text-right text-xs font-mono ${s.contribution >= 0 ? "text-error-text" : "text-success-text"}`}>
                         {s.contribution >= 0 ? "+" : ""}{s.contribution.toFixed(4)}
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
-              {/* Detailed breakdown table */}
+
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -274,11 +336,11 @@ export function Explainability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {waterfall.steps.map((s) => (
+                    {waterfallSteps.map((s) => (
                       <tr key={s.feature} className="border-t border-border/50">
                         <td className="py-1.5 text-text">{s.feature}</td>
                         <td className="py-1.5 text-right text-text font-mono">
-                          {s.value != null ? s.value.toFixed(2) : "—"}
+                          {s.value != null ? s.value.toFixed(2) : "-"}
                         </td>
                         <td className={`py-1.5 text-right font-mono font-medium ${
                           s.contribution > 0 ? "text-error-text" : "text-success-text"
@@ -299,4 +361,3 @@ export function Explainability() {
     </div>
   );
 }
-

@@ -40,7 +40,7 @@ services:
       DHA_RESCUE_DIR: /ml_models
       EBM_MODEL_PATH: /ml_models/artifacts/blood_logistics_ebm.pkl
     volumes:
-      - ../ml_models:/ml_models:ro
+      - ./ml_models:/ml_models:ro
     depends_on:
       postgres:
         condition: service_healthy
