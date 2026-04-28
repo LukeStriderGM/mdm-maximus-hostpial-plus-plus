@@ -130,19 +130,19 @@ export function Explainability() {
     const ttfDays = (prediction.time_to_failure_hours / 24).toFixed(1);
 
     return {
-      headline: `Current node risk is ${riskPct}% (${prediction.risk_level}) with an estimated ${ttfDays} days to failure.`,
+      headline: `Current node risk is ${riskPct}% (${prediction.risk_level}) with an estimated ${ttfDays} days to projected failure under current conditions.`,
       why: upDrivers.length > 0
-        ? `Main factors pushing risk up: ${upDrivers.join(", ")}.`
-        : "No major positive risk drivers were detected.",
+        ? `Primary upward pressure on risk: ${upDrivers.join(", ")}.`
+        : "No significant upward risk drivers were detected.",
       protection: downDrivers.length > 0
-        ? `Main factors reducing risk: ${downDrivers.join(", ")}.`
-        : "There are no strong protective drivers in this prediction.",
+        ? `Primary stabilizing factors: ${downDrivers.join(", ")}.`
+        : "No significant stabilizing factors were detected in this prediction.",
       action:
         prediction.failure_probability > 0.5
-          ? "Action now: activate backup supply and prioritize transport for this node."
+          ? "Recommended action: activate backup supply, elevate transport priority, and execute immediate mitigation at this node."
           : prediction.failure_probability > 0.2
-          ? "Action today: monitor inventory and transport latency, and pre-plan rerouting."
-          : "Action: maintain current plan and continue monitoring key drivers.",
+          ? "Recommended action: increase monitoring cadence, tighten transport controls, and pre-stage rerouting options."
+          : "Recommended action: maintain current operating posture and continue routine surveillance of leading risk drivers.",
     };
   }, [prediction, waterfallSteps]);
 
@@ -397,9 +397,7 @@ export function Explainability() {
                 <div className="mt-4 rounded border border-border bg-canvas p-4">
                   <h4 className="text-sm font-semibold text-text mb-2">Explanation</h4>
                   <p className="text-sm text-text-secondary">
-                    {explanationSummary.headline} {explanationSummary.why} {explanationSummary.protection} {explanationSummary.action}{" "}
-                    In plain terms: a lower risk percent means lower immediate disruption risk, and more days to
-                    failure means more time before urgent shortage pressure.
+                    {explanationSummary.headline} {explanationSummary.why} {explanationSummary.protection} {explanationSummary.action}
                   </p>
                 </div>
               )}
