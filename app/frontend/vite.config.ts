@@ -11,10 +11,7 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": "http://localhost:8000",
-      "/ws": { target: "ws://localhost:8000", ws: true },
-    },
-    hmr: {
-      clientPort: 443,
+      "/ws/events": { target: "ws://localhost:8000", ws: true },
     },
   },
   preview: {
