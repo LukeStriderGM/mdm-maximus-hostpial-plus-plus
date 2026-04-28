@@ -17,6 +17,9 @@ import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
 import { BarChart } from "../components/ui/BarChart";
 
+const RISK_UP_COLOR = "#E69F00";
+const RISK_DOWN_COLOR = "#56B4E9";
+
 export function Explainability() {
   const { data: health } = useQuery({ queryKey: ["ebm-health"], queryFn: getEBMHealth });
   const { data: globalImp } = useQuery({
@@ -109,6 +112,38 @@ export function Explainability() {
     [waterfallSteps, hoveredFeature]
   );
 
+  const explanationSummary = useMemo(() => {
+    if (!prediction || waterfallSteps.length === 0) return null;
+    const upDrivers = waterfallSteps
+      .filter((s) => s.contribution > 0)
+      .sort((a, b) => b.contribution - a.contribution)
+      .slice(0, 2)
+      .map((s) => s.feature);
+    const downDrivers = waterfallSteps
+      .filter((s) => s.contribution < 0)
+      .sort((a, b) => a.contribution - b.contribution)
+      .slice(0, 2)
+      .map((s) => s.feature);
+    const riskPct = (prediction.failure_probability * 100).toFixed(1);
+    const ttfDays = (prediction.time_to_failure_hours / 24).toFixed(1);
+
+    return {
+      headline: `Current node risk is ${riskPct}% (${prediction.risk_level}) with an estimated ${ttfDays} days to failure.`,
+      why: upDrivers.length > 0
+        ? `Main factors pushing risk up: ${upDrivers.join(", ")}.`
+        : "No major positive risk drivers were detected.",
+      protection: downDrivers.length > 0
+        ? `Main factors reducing risk: ${downDrivers.join(", ")}.`
+        : "There are no strong protective drivers in this prediction.",
+      action:
+        prediction.failure_probability > 0.5
+          ? "Action now: activate backup supply and prioritize transport for this node."
+          : prediction.failure_probability > 0.2
+          ? "Action today: monitor inventory and transport latency, and pre-plan rerouting."
+          : "Action: maintain current plan and continue monitoring key drivers.",
+    };
+  }, [prediction, waterfallSteps]);
+
   const modelUnavailable = health && !health.model_loaded;
 
   return (
@@ -153,7 +188,7 @@ export function Explainability() {
           <BarChart
             data={importanceData}
             xKey="feature"
-            bars={[{ key: "importance", color: "#6c63ff", label: "Importance" }]}
+            bars={[{ key: "importance", color: "#4D8DFF", label: "Importance" }]}
             height={300}
           />
         ) : (
@@ -239,10 +274,10 @@ export function Explainability() {
               <div className="flex items-center justify-between gap-4 mb-3">
                 <div className="flex items-center gap-4 text-xs text-text-secondary">
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-error inline-block" /> Increases risk
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: RISK_UP_COLOR }} /> Increases risk
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-success inline-block" /> Decreases risk
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: RISK_DOWN_COLOR }} /> Decreases risk
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
@@ -273,7 +308,7 @@ export function Explainability() {
                     </div>
                     <div>
                       <p className="text-text-secondary">Risk Shift</p>
-                      <p className={`font-mono font-semibold ${hoveredStep.contribution >= 0 ? "text-error-text" : "text-success-text"}`}>
+                      <p className="font-mono font-semibold" style={{ color: hoveredStep.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}>
                         {hoveredStep.contribution >= 0 ? "+" : ""}{hoveredStep.contribution.toFixed(4)}
                       </p>
                     </div>
@@ -295,7 +330,7 @@ export function Explainability() {
                   const left = Math.min(startPct, endPct);
                   const width = Math.max(Math.abs(endPct - startPct), 0.8);
                   const zeroPct = ((0 - waterfallRange.min) / denom) * 100;
-                  const color = s.contribution >= 0 ? "#d10e5c" : "#1a7f4b";
+                  const color = s.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR;
                   const isActive = hoveredStep?.feature === s.feature;
 
                   return (
@@ -320,7 +355,7 @@ export function Explainability() {
                           style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }}
                         />
                       </div>
-                      <div className={`text-right text-xs font-mono ${s.contribution >= 0 ? "text-error-text" : "text-success-text"}`}>
+                      <div className="text-right text-xs font-mono" style={{ color: s.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}>
                         {s.contribution >= 0 ? "+" : ""}{s.contribution.toFixed(4)}
                       </div>
                     </button>
@@ -344,9 +379,10 @@ export function Explainability() {
                         <td className="py-1.5 text-right text-text font-mono">
                           {s.value != null ? s.value.toFixed(2) : "-"}
                         </td>
-                        <td className={`py-1.5 text-right font-mono font-medium ${
-                          s.contribution > 0 ? "text-error-text" : "text-success-text"
-                        }`}>
+                        <td
+                          className="py-1.5 text-right font-mono font-medium"
+                          style={{ color: s.contribution > 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}
+                        >
                           {s.contribution > 0 ? "+" : ""}{s.contribution.toFixed(4)}
                         </td>
                       </tr>
@@ -354,6 +390,18 @@ export function Explainability() {
                   </tbody>
                 </table>
               </div>
+
+              {explanationSummary && (
+                <div className="mt-4 rounded border border-border bg-canvas p-4">
+                  <h4 className="text-sm font-semibold text-text mb-2">What this means</h4>
+                  <div className="space-y-1.5 text-sm text-text-secondary">
+                    <p>{explanationSummary.headline}</p>
+                    <p>{explanationSummary.why}</p>
+                    <p>{explanationSummary.protection}</p>
+                    <p className="text-text">{explanationSummary.action}</p>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-text-disabled text-sm py-8 text-center">No waterfall data.</p>
