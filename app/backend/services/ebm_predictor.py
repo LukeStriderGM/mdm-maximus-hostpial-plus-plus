@@ -20,7 +20,7 @@ from services.ml_interface import StockoutPrediction
 
 logger = logging.getLogger(__name__)
 
-_DHA_DIR = Path(os.getenv("DHA_RESCUE_DIR", str(Path(__file__).resolve().parents[2] / "ml_models")))
+_DHA_DIR = Path(os.getenv("DHA_RESCUE_DIR", str(Path(__file__).resolve().parents[3] / "ml_models")))
 if str(_DHA_DIR) not in sys.path:
     sys.path.insert(0, str(_DHA_DIR))
 

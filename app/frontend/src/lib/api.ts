@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const BASE_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -59,6 +59,12 @@ export const getGlobalInventoryEvents = (limit = 200) => request<InventoryEvent[
 
 // --- Supply Routes ---
 export const getSupplyRoutes = () => request<SupplyRoute[]>("/supply-routes");
+
+// --- Best Path ---
+export const postBestPath = (data: BestPathRequest) =>
+  request<PathResult[]>("/supply-routes/best-path", {
+    method: "POST", body: JSON.stringify(data),
+  });
 
 // --- EBM Explainability ---
 export const getEBMHealth = () => request<EBMHealth>("/ebm/health");
@@ -276,4 +282,27 @@ export interface EBMHealth {
   model_backend: string | null;
   classifier: string | null;
   regressor: string | null;
+}
+
+// --- Best Path Types ---
+export interface PathStep {
+  from_node_id: string; from_node_type: string; from_node_name: string;
+  from_lat: number; from_lng: number;
+  to_node_id: string; to_node_type: string; to_node_name: string;
+  to_lat: number; to_lng: number;
+  route_id: string | null; transport_mode: string;
+  distance_km: number; transit_hours: number;
+  route_status: string; risk_level: string;
+}
+
+export interface PathResult {
+  steps: PathStep[];
+  total_distance_km: number; total_transit_hours: number; total_cost: number;
+  source_node_id: string; source_node_name: string; source_inventory: number;
+  risk_summary: string; path_type: string;
+}
+
+export interface BestPathRequest {
+  destination_node_id: string;
+  product_type: string; priority?: string; max_results?: number;
 }

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { UploadCloud } from "lucide-react";
 
 interface FileUploadProps {
@@ -8,6 +8,7 @@ interface FileUploadProps {
 
 export function FileUpload({ onFileSelect, accept = ".csv,.xlsx,.xls" }: FileUploadProps) {
   const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -16,27 +17,47 @@ export function FileUpload({ onFileSelect, accept = ".csv,.xlsx,.xls" }: FileUpl
     if (file) onFileSelect(file);
   }, [onFileSelect]);
 
+  const openPicker = useCallback(() => {
+    inputRef.current?.click();
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      openPicker();
+    }
+  }, [openPicker]);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) onFileSelect(file);
+    // Reset so selecting the same file again still fires onChange
+    e.target.value = "";
+  }, [onFileSelect]);
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
+      onClick={openPicker}
+      onKeyDown={handleKeyDown}
       className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer ${
         dragging ? "border-primary bg-primary/5" : "border-border hover:border-border-med"
       }`}
-      onClick={() => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = accept;
-        input.onchange = (e) => {
-          const file = (e.target as HTMLInputElement).files?.[0];
-          if (file) onFileSelect(file);
-        };
-        input.click();
-      }}
     >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        onChange={handleChange}
+        className="hidden"
+        aria-hidden="true"
+      />
       <UploadCloud size={32} className="mx-auto mb-3 text-text-disabled" />
-      <p className="text-sm text-text-secondary">Drop CSV or Excel files here</p>
+      <p className="text-sm text-text-secondary">Drop CSV or Excel files here, or click to browse</p>
       <p className="text-xs text-text-disabled mt-1">{accept}</p>
     </div>
   );

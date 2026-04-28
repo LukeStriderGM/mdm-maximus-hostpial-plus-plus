@@ -1,0 +1,49 @@
+modules = ["nodejs-20", "python-3.12", "web"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+packages = ["arrow-cpp", "glibcLocales", "libxcrypt", "nats-server", "pkg-config", "postgresql"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash -lc 'cd app/backend && uvicorn main:app --host 0.0.0.0 --port 8000 & cd app/frontend && exec npm run dev'"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5173
+externalPort = 5173
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-lc", "cd app/backend && uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 5000"]
+build = ["bash", "-lc", "uv sync --frozen && ( [ -f ml_models/artifacts/blood_logistics_ebm.pkl ] || (cd ml_models && uv run --no-sync python train_ebm_pkl.py --samples 3000) ) && cd app/frontend && npm ci && npm run build"]

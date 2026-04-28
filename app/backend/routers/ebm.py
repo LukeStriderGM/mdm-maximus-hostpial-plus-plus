@@ -80,7 +80,15 @@ def _get_ebm():
 
     if isinstance(ml_predictor, EBMPredictor):
         return ml_predictor
-    raise HTTPException(503, detail="EBM model not configured. Set EBM_MODEL_PATH env var.")
+    raise HTTPException(
+        503,
+        detail=(
+            "EBM model not loaded. Expected artifact at "
+            "<repo>/ml_models/artifacts/blood_logistics_ebm.pkl "
+            "(or set EBM_MODEL_PATH). Train it with "
+            "`cd ml_models && python train_ebm_pkl.py`."
+        ),
+    )
 
 
 # --- Routes ---

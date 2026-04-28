@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
 
 # --- Enums as strings for API ---
@@ -286,3 +286,43 @@ class IngestionResult(BaseModel):
     spokes_created: int
     items_created: int
     errors: list[str] = []
+
+
+# --- Best Path Schemas ---
+
+class BestPathRequest(BaseModel):
+    destination_node_id: str
+    product_type: str
+    priority: Literal["routine", "urgent", "emergency"] = "routine"
+    max_results: int = Field(default=3, ge=1, le=10)
+
+
+class PathStepResponse(BaseModel):
+    from_node_id: str
+    from_node_type: str
+    from_node_name: str
+    from_lat: float
+    from_lng: float
+    to_node_id: str
+    to_node_type: str
+    to_node_name: str
+    to_lat: float
+    to_lng: float
+    route_id: Optional[str] = None
+    transport_mode: str
+    distance_km: float
+    transit_hours: float
+    route_status: str
+    risk_level: str
+
+
+class PathResultResponse(BaseModel):
+    steps: list[PathStepResponse]
+    total_distance_km: float
+    total_transit_hours: float
+    total_cost: float
+    source_node_id: str
+    source_node_name: str
+    source_inventory: int
+    risk_summary: str
+    path_type: str

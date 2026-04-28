@@ -1,9 +1,6 @@
-name: hospitalpp
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: hospitalpp-postgres
     environment:
       POSTGRES_DB: hospitalpp
       POSTGRES_USER: hospitalpp
@@ -11,22 +8,26 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U hospitalpp -d hospitalpp"]
+      test: ["CMD-SHELL", "pg_isready -U hospitalpp"]
       interval: 5s
-      timeout: 3s
-      retries: 20
-    restart: unless-stopped
+      timeout: 5s
+      retries: 5
 
   nats:
     image: nats:2.10-alpine
-    container_name: hospitalpp-nats
-    command: ["-js"]
+    command: "--jetstream --store_dir /data --http_port 8222"
     ports:
       - "4222:4222"
       - "8222:8222"
-    restart: unless-stopped
+    volumes:
+      - natsdata:/data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -41,11 +42,12 @@ services:
       EBM_MODEL_PATH: /ml_models/artifacts/blood_logistics_ebm.pkl
     volumes:
       - ./ml_models:/ml_models:ro
+      - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
       nats:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -67,15 +69,18 @@ services:
     build:
       context: ./app/backend
       dockerfile: Dockerfile
-    container_name: hospitalpp-seed
-    profiles: ["seed"]
+    command: ["python", "seed.py"]
     environment:
       DATABASE_URL: postgresql+asyncpg://hospitalpp:hospitalpp@postgres:5432/hospitalpp
+      SEED_HUBS: "${SEED_HUBS:-5}"
+      SEED_SPOKES: "${SEED_SPOKES:-20}"
+      SEED_FORCE: "${SEED_FORCE:-}"
     depends_on:
-      postgres:
-        condition: service_healthy
-    command: ["python", "seed.py"]
-    restart: "no"
+      backend:
+        condition: service_started
+    profiles:
+      - seed
 
 volumes:
-  postgres_data:
+  pgdata:
+  natsdata:

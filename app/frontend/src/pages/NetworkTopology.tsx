@@ -19,6 +19,7 @@ import {
 } from "../lib/api";
 import { Panel } from "../components/ui/Panel";
 import { StatusBadge } from "../components/ui/StatusBadge";
+import { BestPathPanel } from "../components/BestPathPanel";
 
 // ---------- Graph types ----------
 
@@ -92,6 +93,7 @@ export function NetworkTopology() {
   const [, setHovered] = useState<GraphNode | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [showPathPanel, setShowPathPanel] = useState(false);
 
   // Data fetching
   const { data: hubs } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
@@ -636,7 +638,16 @@ export function NetworkTopology() {
   }, [selectedNode, routes]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-6rem)]">
+    <div className="relative h-[calc(100vh-6rem)]">
+    {showPathPanel && (
+      <BestPathPanel
+        onClose={() => setShowPathPanel(false)}
+        onShowPath={() => {}}
+        prefillDestination={selectedNode ? { id: selectedNode.id, type: selectedNode.type } : null}
+        showMapAction={false}
+      />
+    )}
+    <div className="flex gap-4 h-full">
       {/* Canvas area */}
       <div className="flex-1 flex flex-col gap-4 min-w-0">
         <div className="flex items-center justify-between">
@@ -665,6 +676,17 @@ export function NetworkTopology() {
           <div className="absolute bottom-3 left-3 text-[10px] text-text-disabled">
             Scroll to zoom / Drag to pan / Click node to inspect / Double-click to navigate
           </div>
+          {!showPathPanel && (
+            <button
+              onClick={() => setShowPathPanel(true)}
+              className="absolute bottom-3 right-3 z-[100] flex items-center gap-1.5 bg-card border border-border rounded-md px-3 py-2 text-xs font-medium text-text-primary shadow-lg hover:bg-hover transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>
+              </svg>
+              Find Best Path
+            </button>
+          )}
         </div>
       </div>
 
@@ -795,6 +817,7 @@ export function NetworkTopology() {
           </Panel>
         )}
       </div>
+    </div>
     </div>
   );
 }

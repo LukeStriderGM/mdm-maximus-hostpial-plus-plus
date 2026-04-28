@@ -149,14 +149,19 @@ _log = _logging.getLogger(__name__)
 
 
 def _create_predictor():
-    model_path = os.getenv("EBM_MODEL_PATH")
-    if model_path and _Path(model_path).exists():
+    # Prefer the explicit env var, otherwise fall back to the conventional
+    # artifact path next to the ml_models/ tree shipped with the repo.
+    default_path = _Path(__file__).resolve().parents[3] / "ml_models" / "artifacts" / "blood_logistics_ebm.pkl"
+    model_path = os.getenv("EBM_MODEL_PATH") or str(default_path)
+    if _Path(model_path).exists():
         try:
             from services.ebm_predictor import EBMPredictor
             _log.info("EBM predictor configured (lazy load from %s)", model_path)
             return EBMPredictor(model_path)
         except Exception as e:
             _log.warning("Failed to configure EBM predictor: %s — falling back to heuristic", e)
+    else:
+        _log.info("No EBM artifact found at %s — using heuristic predictor", model_path)
     return HeuristicPredictor()
 
 

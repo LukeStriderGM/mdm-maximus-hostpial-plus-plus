@@ -7,7 +7,40 @@ DATABASE_URL = os.getenv(
     "postgresql+asyncpg://hospitalpp:hospitalpp@localhost:5432/hospitalpp",
 )
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# Normalize the connection URL for SQLAlchemy's async engine. Replit provides
+# DATABASE_URL in the standard "postgresql://" form, but SQLAlchemy needs the
+# "+asyncpg" driver tag. Also strip "sslmode" query params that asyncpg doesn't
+# accept (asyncpg uses "ssl" instead).
+def _normalize_async_url(url: str) -> str:
+    from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+asyncpg://" + url[len("postgresql://"):]
+
+    parts = urlsplit(url)
+    if parts.query:
+        kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+                if k.lower() not in {"sslmode", "channel_binding"}]
+        url = urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), parts.fragment))
+    return url
+
+
+DATABASE_URL = _normalize_async_url(DATABASE_URL)
+
+# Pool config tuned for managed Postgres (Replit / Neon-style):
+# - pool_pre_ping: validate each connection before use, transparently
+#   replacing ones the server has closed (idle timeout, restarts, network
+#   blips). Eliminates "asyncpg.InterfaceError: connection is closed".
+# - pool_recycle: proactively recycle connections after 30 minutes, well
+#   under typical server-side idle timeouts.
+engine = create_async_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 

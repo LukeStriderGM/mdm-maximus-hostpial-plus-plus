@@ -24,13 +24,15 @@ async def upload_data(
 
     ext = file.filename.lower().rsplit(".", 1)[-1] if "." in file.filename else ""
 
+    if ext == "csv":
+        parser = parse_csv
+    elif ext in ("xlsx", "xls"):
+        parser = parse_excel
+    else:
+        raise HTTPException(400, "Unsupported file type. Use .csv or .xlsx")
+
     try:
-        if ext == "csv":
-            df = parse_csv(content)
-        elif ext in ("xlsx", "xls"):
-            df = parse_excel(content)
-        else:
-            raise HTTPException(400, "Unsupported file type. Use .csv or .xlsx")
+        df = parser(content)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except Exception as e:

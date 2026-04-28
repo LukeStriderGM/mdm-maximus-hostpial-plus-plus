@@ -1,10 +1,13 @@
 import json
 import logging
 import os
+import pathlib
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from models.database import engine, Base
 from services.nats_service import nats_service
@@ -64,3 +67,29 @@ app.include_router(ws.router, tags=["websocket"])
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok", "nats_connected": nats_service.connected}
+
+
+# In production, serve the built frontend (Vite dist) from this same server.
+# Resolves <repo>/app/frontend/dist; if missing (i.e. dev mode), this is a no-op.
+FRONTEND_DIST = pathlib.Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if FRONTEND_DIST.is_dir():
+    assets_dir = FRONTEND_DIST / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_fallback(full_path: str):
+        # API and websocket routes are already registered above; FastAPI matches
+        # those first. This handler only fires for non-matched paths.
+        if full_path.startswith("api/") or full_path.startswith("ws"):
+            raise HTTPException(status_code=404)
+        candidate = FRONTEND_DIST / full_path
+        if full_path and candidate.is_file():
+            return FileResponse(str(candidate))
+        index = FRONTEND_DIST / "index.html"
+        if index.is_file():
+            return FileResponse(str(index))
+        raise HTTPException(status_code=404)
+    logger.info("Serving frontend from %s", FRONTEND_DIST)
+else:
+    logger.info("Frontend dist not found at %s — running API-only", FRONTEND_DIST)
