@@ -15,10 +15,27 @@ import {
 import { Panel } from "../components/ui/Panel";
 import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
-import { BarChart } from "../components/ui/BarChart";
 
 const RISK_UP_COLOR = "#EF4444";
 const RISK_DOWN_COLOR = "#22C55E";
+const GLOBAL_BAR_COLOR = "#4D8DFF";
+
+const FEATURE_LABELS: Record<string, string> = {
+  transport_delay_hours: "Transport Delay",
+  risk_composite: "Composite Risk",
+  temperature_excursion_flag: "Temperature Excursion",
+  expiry_hours_remaining: "Expiry Time Remaining",
+  expiry_risk: "Expiry Risk",
+  viability_score: "Viability Score",
+  cold_chain_health_score: "Cold Chain Health",
+  backup_supply_available: "Backup Supply Available",
+  transport_risk: "Transport Risk",
+  inventory_units: "Inventory Units",
+  casualty_rate: "Casualty Rate",
+  days_of_supply: "Days of Supply",
+  route_reliability_score: "Route Reliability",
+  demand_rate: "Demand Rate",
+};
 
 export function Explainability() {
   const { data: health } = useQuery({ queryKey: ["ebm-health"], queryFn: getEBMHealth });
@@ -79,12 +96,23 @@ export function Explainability() {
   const importanceData = useMemo(() => {
     if (!globalImp?.importance) return [];
     return globalImp.importance
-      .slice(0, 14)
+      .slice(0, 8)
       .map((f) => ({
-        feature: f.feature.length > 20 ? f.feature.slice(0, 20) : f.feature,
-        importance: Math.round(f.importance * 10000) / 10000,
+        feature: FEATURE_LABELS[f.feature] ?? f.feature,
+        importance: Number(f.importance),
       }));
   }, [globalImp]);
+
+  const globalMaxImportance = useMemo(
+    () => Math.max(...importanceData.map((d) => d.importance), 0),
+    [importanceData]
+  );
+
+  const globalTakeaway = useMemo(() => {
+    if (importanceData.length === 0) return "";
+    const top = importanceData.slice(0, 3).map((d) => d.feature).join(", ");
+    return `Top network-wide risk drivers: ${top}.`;
+  }, [importanceData]);
 
   const waterfallRange = useMemo(() => {
     if (!waterfall?.steps?.length) return { min: -1, max: 1 };
@@ -395,12 +423,26 @@ export function Explainability() {
 
       <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
         {importanceData.length > 0 ? (
-          <BarChart
-            data={importanceData}
-            xKey="feature"
-            bars={[{ key: "importance", color: "#4D8DFF", label: "Importance" }]}
-            height={300}
-          />
+          <div className="space-y-3">
+            {importanceData.map((row) => {
+              const pct = globalMaxImportance > 0 ? (row.importance / globalMaxImportance) * 100 : 0;
+              return (
+                <div key={row.feature} className="grid grid-cols-[220px_1fr_70px] gap-3 items-center">
+                  <div className="text-xs text-text-secondary">{row.feature}</div>
+                  <div className="h-6 rounded bg-canvas border border-border/60 overflow-hidden">
+                    <div
+                      className="h-full rounded"
+                      style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: GLOBAL_BAR_COLOR }}
+                    />
+                  </div>
+                  <div className="text-right text-xs font-mono text-text">
+                    {row.importance.toFixed(3)}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-text-secondary pt-1">{globalTakeaway}</p>
+          </div>
         ) : (
           <p className="text-text-disabled text-sm py-8 text-center">
             {modelUnavailable ? "Model not loaded." : "Loading feature importance..."}
