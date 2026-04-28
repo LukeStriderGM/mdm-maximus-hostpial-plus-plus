@@ -27,7 +27,7 @@ streamlit run app.py
 ## Project Structure
 
 ```
-dha_rescue/
+ml_models/
 ├── app.py          # Streamlit dashboard
 ├── model.py        # ML model training and prediction
 ├── data.py         # Synthetic data generator

@@ -13,7 +13,12 @@ The React Compiler is not enabled on this template because of its impact on dev 
 
 ## Expanding the ESLint configuration
 
+<<<<<<< HEAD
 If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+=======
+- Trained model artifact exists at:
+  - `ml_models/artifacts/blood_logistics_ebm.pkl`
+>>>>>>> 871382a (Rename dha_rescue to ml_models and update integration paths)
 
 ```js
 export default defineConfig([
