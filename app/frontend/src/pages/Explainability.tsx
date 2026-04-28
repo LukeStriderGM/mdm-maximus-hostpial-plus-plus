@@ -15,7 +15,27 @@ import {
 import { Panel } from "../components/ui/Panel";
 import { StatCard } from "../components/ui/StatCard";
 import { StatusBadge } from "../components/ui/StatusBadge";
-import { BarChart } from "../components/ui/BarChart";
+
+const RISK_UP_COLOR = "#EF4444";
+const RISK_DOWN_COLOR = "#22C55E";
+const GLOBAL_BAR_COLOR = "#4D8DFF";
+
+const FEATURE_LABELS: Record<string, string> = {
+  transport_delay_hours: "Transport Delay",
+  risk_composite: "Composite Risk",
+  temperature_excursion_flag: "Temperature Excursion",
+  expiry_hours_remaining: "Expiry Time Remaining",
+  expiry_risk: "Expiry Risk",
+  viability_score: "Viability Score",
+  cold_chain_health_score: "Cold Chain Health",
+  backup_supply_available: "Backup Supply Available",
+  transport_risk: "Transport Risk",
+  inventory_units: "Inventory Units",
+  casualty_rate: "Casualty Rate",
+  days_of_supply: "Days of Supply",
+  route_reliability_score: "Route Reliability",
+  demand_rate: "Demand Rate",
+};
 
 export function Explainability() {
   const { data: health } = useQuery({ queryKey: ["ebm-health"], queryFn: getEBMHealth });
@@ -31,6 +51,8 @@ export function Explainability() {
   const [prediction, setPrediction] = useState<EBMPrediction | null>(null);
   const [waterfall, setWaterfall] = useState<WaterfallResult | null>(null);
   const [inputRecord, setInputRecord] = useState<EBMRecordInput | null>(null);
+  const [hoveredFeature, setHoveredFeature] = useState<string | null>(null);
+  const [sortMode, setSortMode] = useState<"model_order" | "impact_desc">("model_order");
 
   const allNodes = useMemo(() => {
     const nodes: { id: string; name: string; type: string }[] = [];
@@ -60,6 +82,7 @@ export function Explainability() {
 
       const wf = await postEBMWaterfall([record], 0, 10);
       setWaterfall(wf);
+      setHoveredFeature(wf.steps?.[0]?.feature ?? null);
 
       return pred;
     },
@@ -70,33 +93,93 @@ export function Explainability() {
     predictMutation.mutate(selectedNode);
   };
 
-  // Global importance chart data
   const importanceData = useMemo(() => {
     if (!globalImp?.importance) return [];
     return globalImp.importance
-      .slice(0, 14)
+      .slice(0, 8)
       .map((f) => ({
-        feature: f.feature.length > 20 ? f.feature.slice(0, 20) : f.feature,
-        importance: Math.round(f.importance * 10000) / 10000,
+        feature: FEATURE_LABELS[f.feature] ?? f.feature,
+        importance: Number(f.importance),
       }));
   }, [globalImp]);
 
-  // Waterfall chart data — diverging bar chart
-  const waterfallData = useMemo(() => {
-    if (!waterfall?.steps) return [];
-    return waterfall.steps.map((s) => ({
-      feature: s.feature.length > 18 ? s.feature.slice(0, 18) : s.feature,
-      contribution: Math.round(s.contribution * 10000) / 10000,
-    }));
+  const globalMaxImportance = useMemo(
+    () => Math.max(...importanceData.map((d) => d.importance), 0),
+    [importanceData]
+  );
+
+  const globalTakeaway = useMemo(() => {
+    if (importanceData.length === 0) return "";
+    const top = importanceData.slice(0, 3).map((d) => d.feature).join(", ");
+    return `Top network-wide risk drivers: ${top}.`;
+  }, [importanceData]);
+
+  const waterfallRange = useMemo(() => {
+    if (!waterfall?.steps?.length) return { min: -1, max: 1 };
+    const vals = [
+      waterfall.base_value,
+      waterfall.final_value,
+      ...waterfall.steps.flatMap((s) => [s.start, s.end]),
+    ];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = (max - min) * 0.1 || 0.1;
+    return { min: min - pad, max: max + pad };
   }, [waterfall]);
+
+  const waterfallSteps = useMemo(() => {
+    if (!waterfall?.steps) return [];
+    if (sortMode === "impact_desc") {
+      return [...waterfall.steps].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+    }
+    return waterfall.steps;
+  }, [waterfall, sortMode]);
+
+  const displayedWaterfallSteps = useMemo(() => waterfallSteps.slice(0, 5), [waterfallSteps]);
+
+  const hoveredStep = useMemo(
+    () => waterfallSteps.find((s) => s.feature === hoveredFeature) ?? waterfallSteps[0] ?? null,
+    [waterfallSteps, hoveredFeature]
+  );
+
+  const explanationSummary = useMemo(() => {
+    if (!prediction || waterfallSteps.length === 0) return null;
+    const upDrivers = waterfallSteps
+      .filter((s) => s.contribution > 0)
+      .sort((a, b) => b.contribution - a.contribution)
+      .slice(0, 2)
+      .map((s) => s.feature);
+    const downDrivers = waterfallSteps
+      .filter((s) => s.contribution < 0)
+      .sort((a, b) => a.contribution - b.contribution)
+      .slice(0, 2)
+      .map((s) => s.feature);
+    const riskPct = (prediction.failure_probability * 100).toFixed(1);
+    const ttfDays = (prediction.time_to_failure_hours / 24).toFixed(1);
+
+    return {
+      headline: `Current node risk is ${riskPct}% (${prediction.risk_level}) with an estimated ${ttfDays} days to projected failure under current conditions.`,
+      why: upDrivers.length > 0
+        ? `Primary upward pressure on risk: ${upDrivers.join(", ")}.`
+        : "No significant upward risk drivers were detected.",
+      protection: downDrivers.length > 0
+        ? `Primary stabilizing factors: ${downDrivers.join(", ")}.`
+        : "No significant stabilizing factors were detected in this prediction.",
+      action:
+        prediction.failure_probability > 0.5
+          ? "Recommended action: activate backup supply, elevate transport priority, and execute immediate mitigation at this node."
+          : prediction.failure_probability > 0.2
+          ? "Recommended action: increase monitoring cadence, tighten transport controls, and pre-stage rerouting options."
+          : "Recommended action: maintain current operating posture and continue routine surveillance of leading risk drivers.",
+    };
+  }, [prediction, waterfallSteps]);
 
   const modelUnavailable = health && !health.model_loaded;
 
   return (
     <div className="space-y-4">
-      <h2 className="text-lg font-semibold text-text">Model Explainability</h2>
+      <h2 className="text-lg font-semibold text-text">Glassbox Model Explainability</h2>
 
-      {/* Model Health */}
       <div className="grid grid-cols-4 gap-4">
         <StatCard
           label="Model Status"
@@ -104,56 +187,39 @@ export function Explainability() {
           status={health?.model_loaded ? "success" : "error"}
         />
         <StatCard
-          label="Backend"
-          value={health?.model_backend || "none"}
+          label="Model Type"
+          value={health?.model_backend ? "Glassbox Predictive Model" : "none"}
           status={health?.model_loaded ? "default" : "error"}
         />
         <StatCard
-          label="Classifier"
-          value={health?.classifier || "none"}
+          label="Risk Engine"
+          value={health?.classifier ? "Supply Failure Risk Scoring" : "none"}
           status="default"
         />
         <StatCard
-          label="Regressor"
-          value={health?.regressor || "none"}
+          label="Forecast Engine"
+          value={health?.regressor ? "Time-to-Failure Forecasting" : "none"}
           status="default"
         />
       </div>
 
       {modelUnavailable && (
         <div className="bg-warning/10 border border-warning/30 rounded-md px-4 py-3 text-sm text-warning-text">
-          EBM model not loaded. Train the artifact with:{" "}
+          Glassbox model not loaded. Train the artifact with:{" "}
           <code className="bg-surface px-1.5 py-0.5 rounded text-xs">
-            cd dha_rescue && python train_ebm_pkl.py
+            cd ml_models && python train_ebm_pkl.py
           </code>{" "}
           then set <code className="bg-surface px-1.5 py-0.5 rounded text-xs">EBM_MODEL_PATH</code>.
         </div>
       )}
 
-      {/* Global Feature Importance */}
-      <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
-        {importanceData.length > 0 ? (
-          <BarChart
-            data={importanceData}
-            xKey="feature"
-            bars={[{ key: "importance", color: "#6c63ff", label: "Importance" }]}
-            height={300}
-          />
-        ) : (
-          <p className="text-text-disabled text-sm py-8 text-center">
-            {modelUnavailable ? "Model not loaded." : "Loading feature importance..."}
-          </p>
-        )}
-      </Panel>
-
-      {/* Node Risk Predictor */}
-      <Panel title="Node Risk Predictor">
+      <Panel title="Node Risk Prediction">
         <div className="flex items-end gap-4 mb-4">
           <div className="flex-1">
             <label className="block text-xs text-text-secondary mb-1">Select Node</label>
             <select
               value={selectedNode}
-              onChange={(e) => { setSelectedNode(e.target.value); setPrediction(null); setWaterfall(null); }}
+              onChange={(e) => { setSelectedNode(e.target.value); setPrediction(null); setWaterfall(null); setHoveredFeature(null); }}
               className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
             >
               <option value="">Choose a node...</option>
@@ -202,40 +268,116 @@ export function Explainability() {
             <div className="bg-surface border border-border rounded p-3">
               <p className="text-xs text-text-secondary mb-1">Inventory Input</p>
               <p className="text-xl font-mono font-bold text-text">
-                {inputRecord?.inventory_units.toLocaleString() || "—"}
+                {inputRecord?.inventory_units.toLocaleString() || "-"}
               </p>
             </div>
           </div>
         )}
       </Panel>
 
-      {/* Waterfall Explanation */}
       {waterfall && (
         <Panel
-          title="Prediction Waterfall — Feature Contributions"
+          title="SHAP Waterfall - What Drove the Risk Score"
           actions={
             <span className="text-xs text-text-secondary">
-              Base: {waterfall.base_value.toFixed(4)} | Final: {waterfall.final_value.toFixed(4)}
+              Starting Score: {waterfall.base_value.toFixed(4)} | Final Score: {waterfall.final_value.toFixed(4)}
             </span>
           }
         >
-          {waterfallData.length > 0 ? (
+          {displayedWaterfallSteps.length > 0 ? (
             <>
-              <div className="flex items-center gap-4 mb-3 text-xs text-text-secondary">
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-error inline-block" /> Increases risk
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-sm bg-success inline-block" /> Decreases risk
-                </span>
+              <div className="flex items-center justify-between gap-4 mb-3">
+                <div className="flex items-center gap-4 text-xs text-text-secondary">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: RISK_UP_COLOR }} /> Increases risk
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ backgroundColor: RISK_DOWN_COLOR }} /> Decreases risk
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <label htmlFor="waterfall-sort" className="text-text-secondary">Sort</label>
+                  <select
+                    id="waterfall-sort"
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value as "model_order" | "impact_desc")}
+                    className="bg-canvas border border-border rounded px-2 py-1 text-text"
+                  >
+                    <option value="model_order">Model order</option>
+                    <option value="impact_desc">Largest impact first</option>
+                  </select>
+                </div>
               </div>
-              <BarChart
-                data={waterfallData}
-                xKey="feature"
-                bars={[{ key: "contribution", color: "#ff5286", label: "Contribution" }]}
-                height={280}
-              />
-              {/* Detailed breakdown table */}
+
+              {hoveredStep && (
+                <div className="mb-3 rounded border border-border bg-canvas p-3 text-xs">
+                  <p className="text-text-secondary mb-1">Selected Driver</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <p className="text-text-secondary">Feature</p>
+                      <p className="font-medium text-text">{hoveredStep.feature}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Input Value</p>
+                      <p className="font-mono text-text">{hoveredStep.value != null ? hoveredStep.value.toFixed(2) : "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Risk Shift</p>
+                      <p className="font-mono font-semibold" style={{ color: hoveredStep.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}>
+                        {hoveredStep.contribution >= 0 ? "+" : ""}{hoveredStep.contribution.toFixed(4)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-text-secondary">Score Path</p>
+                      <p className="font-mono text-text">
+                        {`${hoveredStep.start.toFixed(4)} -> ${hoveredStep.end.toFixed(4)}`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 rounded border border-border p-3 bg-surface">
+                {displayedWaterfallSteps.map((s) => {
+                  const denom = waterfallRange.max - waterfallRange.min || 1;
+                  const startPct = ((s.start - waterfallRange.min) / denom) * 100;
+                  const endPct = ((s.end - waterfallRange.min) / denom) * 100;
+                  const left = Math.min(startPct, endPct);
+                  const width = Math.max(Math.abs(endPct - startPct), 0.8);
+                  const zeroPct = ((0 - waterfallRange.min) / denom) * 100;
+                  const color = s.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR;
+                  const isActive = hoveredStep?.feature === s.feature;
+
+                  return (
+                    <button
+                      type="button"
+                      key={s.feature}
+                      onMouseEnter={() => setHoveredFeature(s.feature)}
+                      onFocus={() => setHoveredFeature(s.feature)}
+                      onClick={() => setHoveredFeature(s.feature)}
+                      className={`w-full grid grid-cols-[220px_1fr_90px] items-center gap-3 text-left rounded px-1 py-1 transition ${
+                        isActive ? "bg-canvas/70 ring-1 ring-primary/40" : "hover:bg-canvas/40"
+                      }`}
+                    >
+                      <div className="text-xs text-text truncate">{s.feature}</div>
+                      <div className="relative h-7 rounded bg-canvas border border-border/60 overflow-hidden">
+                        <div
+                          className="absolute top-0 bottom-0 w-px bg-border-strong/80"
+                          style={{ left: `${Math.min(Math.max(zeroPct, 0), 100)}%` }}
+                        />
+                        <div
+                          className="absolute top-1 bottom-1 rounded"
+                          style={{ left: `${left}%`, width: `${width}%`, backgroundColor: color }}
+                        />
+                      </div>
+                      <div className="text-right text-xs font-mono" style={{ color: s.contribution >= 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}>
+                        {s.contribution >= 0 ? "+" : ""}{s.contribution.toFixed(4)}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
@@ -246,15 +388,16 @@ export function Explainability() {
                     </tr>
                   </thead>
                   <tbody>
-                    {waterfall.steps.map((s) => (
+                    {displayedWaterfallSteps.map((s) => (
                       <tr key={s.feature} className="border-t border-border/50">
                         <td className="py-1.5 text-text">{s.feature}</td>
                         <td className="py-1.5 text-right text-text font-mono">
-                          {s.value != null ? s.value.toFixed(2) : "—"}
+                          {s.value != null ? s.value.toFixed(2) : "-"}
                         </td>
-                        <td className={`py-1.5 text-right font-mono font-medium ${
-                          s.contribution > 0 ? "text-error-text" : "text-success-text"
-                        }`}>
+                        <td
+                          className="py-1.5 text-right font-mono font-medium"
+                          style={{ color: s.contribution > 0 ? RISK_UP_COLOR : RISK_DOWN_COLOR }}
+                        >
                           {s.contribution > 0 ? "+" : ""}{s.contribution.toFixed(4)}
                         </td>
                       </tr>
@@ -262,12 +405,50 @@ export function Explainability() {
                   </tbody>
                 </table>
               </div>
+
+              {explanationSummary && (
+                <div className="mt-4 rounded border border-border bg-canvas p-4">
+                  <h4 className="text-sm font-semibold text-text mb-2">Explanation</h4>
+                  <p className="text-sm text-text-secondary">
+                    {explanationSummary.headline} {explanationSummary.why} {explanationSummary.protection} {explanationSummary.action}
+                  </p>
+                </div>
+              )}
             </>
           ) : (
             <p className="text-text-disabled text-sm py-8 text-center">No waterfall data.</p>
           )}
         </Panel>
       )}
+
+      <Panel title="Global Feature Importance" loading={!globalImp && health?.model_loaded}>
+        {importanceData.length > 0 ? (
+          <div className="space-y-3">
+            {importanceData.map((row) => {
+              const pct = globalMaxImportance > 0 ? (row.importance / globalMaxImportance) * 100 : 0;
+              return (
+                <div key={row.feature} className="grid grid-cols-[220px_1fr_70px] gap-3 items-center">
+                  <div className="text-xs text-text-secondary">{row.feature}</div>
+                  <div className="h-6 rounded bg-canvas border border-border/60 overflow-hidden">
+                    <div
+                      className="h-full rounded"
+                      style={{ width: `${Math.max(pct, 2)}%`, backgroundColor: GLOBAL_BAR_COLOR }}
+                    />
+                  </div>
+                  <div className="text-right text-xs font-mono text-text">
+                    {row.importance.toFixed(3)}
+                  </div>
+                </div>
+              );
+            })}
+            <p className="text-xs text-text-secondary pt-1">{globalTakeaway}</p>
+          </div>
+        ) : (
+          <p className="text-text-disabled text-sm py-8 text-center">
+            {modelUnavailable ? "Model not loaded." : "Loading feature importance..."}
+          </p>
+        )}
+      </Panel>
     </div>
   );
 }

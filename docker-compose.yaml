@@ -33,22 +33,37 @@ services:
     build:
       context: ./app/backend
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    container_name: hospitalpp-backend
     environment:
       DATABASE_URL: postgresql+asyncpg://hospitalpp:hospitalpp@postgres:5432/hospitalpp
       NATS_URL: nats://nats:4222
       CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
-      EBM_MODEL_PATH: /app/ml_models/artifacts/blood_logistics_ebm.pkl
-      DHA_RESCUE_DIR: /app/ml_models
+      DHA_RESCUE_DIR: /ml_models
+      EBM_MODEL_PATH: /ml_models/artifacts/blood_logistics_ebm.pkl
+    volumes:
+      - ./ml_models:/ml_models:ro
+      - ./data:/app/data
     depends_on:
       postgres:
         condition: service_healthy
       nats:
         condition: service_healthy
-    volumes:
-      - ./data:/app/data
-      - ./ml_models:/app/ml_models:ro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:8000/api/v1
+    container_name: hospitalpp-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
 
   seed:
     build:
@@ -65,19 +80,6 @@ services:
         condition: service_started
     profiles:
       - seed
-
-  frontend:
-    build:
-      context: ./app/frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_NODE_ID: "${VITE_NODE_ID:-}"
-        VITE_NODE_TYPE: "${VITE_NODE_TYPE:-}"
-        VITE_API_URL: "${VITE_API_URL:-}"
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
 
 volumes:
   pgdata:
