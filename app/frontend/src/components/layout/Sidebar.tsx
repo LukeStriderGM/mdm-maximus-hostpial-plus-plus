@@ -1,10 +1,14 @@
 import { useState } from "react";
 import { NavLink } from "react-router-dom";
-import { Globe, LayoutDashboard, Building2, RadioTower, Upload, PanelLeftOpen, PanelLeftClose } from "lucide-react";
+import { Globe, LayoutDashboard, Building2, RadioTower, Upload, PanelLeftOpen, PanelLeftClose, BarChart3, Network, Activity, BrainCircuit } from "lucide-react";
 
 const navItems = [
   { to: "/", icon: Globe, label: "Map" },
-  { to: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { to: "/dashboard", icon: LayoutDashboard, label: "Network" },
+  { to: "/topology", icon: Network, label: "Topology" },
+  { to: "/inventory", icon: Activity, label: "Inventory" },
+  { to: "/supply-demand", icon: BarChart3, label: "Supply/Demand" },
+  { to: "/explainability", icon: BrainCircuit, label: "Explainability" },
   { to: "/hubs", icon: Building2, label: "Hubs" },
   { to: "/spokes", icon: RadioTower, label: "Spokes" },
   { to: "/upload", icon: Upload, label: "Upload" },
@@ -24,6 +28,7 @@ export function Sidebar() {
           {expanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
         </button>
       </div>
+
       <nav className="flex-1 py-2">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink

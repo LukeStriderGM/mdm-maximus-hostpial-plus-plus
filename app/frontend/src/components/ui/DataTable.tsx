@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search } from "lucide-react";
+import { Search, ChevronsLeft, ChevronLeft, ChevronRight, ChevronsRight } from "lucide-react";
 
 export interface Column<T> {
   key: string;
@@ -8,22 +8,26 @@ export interface Column<T> {
   sortable?: boolean;
 }
 
+const PAGE_SIZE_OPTIONS = [10, 20, 50, 100];
+
 interface DataTableProps<T> {
   columns: Column<T>[];
   data: T[];
   onRowClick?: (row: T) => void;
   searchable?: boolean;
   pageSize?: number;
+  pageSizeSelector?: boolean;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function DataTable<T extends Record<string, any>>({
-  columns, data, onRowClick, searchable = true, pageSize = 20,
+  columns, data, onRowClick, searchable = true, pageSize: defaultPageSize = 20, pageSizeSelector = true,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(defaultPageSize);
 
   const filtered = useMemo(() => {
     if (!search) return data;
@@ -43,12 +47,38 @@ export function DataTable<T extends Record<string, any>>({
   }, [filtered, sortKey, sortDir]);
 
   const totalPages = Math.ceil(sorted.length / pageSize);
-  const paged = sorted.slice(page * pageSize, (page + 1) * pageSize);
+  const safePage = Math.min(page, Math.max(0, totalPages - 1));
+  const paged = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const rangeStart = sorted.length === 0 ? 0 : safePage * pageSize + 1;
+  const rangeEnd = Math.min((safePage + 1) * pageSize, sorted.length);
 
   const handleSort = (key: string) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortKey(key); setSortDir("asc"); }
   };
+
+  const handlePageSizeChange = (newSize: number) => {
+    const firstRow = safePage * pageSize;
+    setPageSize(newSize);
+    setPage(Math.floor(firstRow / newSize));
+  };
+
+  // Build page number buttons with ellipsis
+  const pageButtons = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i);
+    const pages: (number | "ellipsis-l" | "ellipsis-r")[] = [0];
+    if (safePage > 2) pages.push("ellipsis-l");
+    const start = Math.max(1, safePage - 1);
+    const end = Math.min(totalPages - 2, safePage + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    if (safePage < totalPages - 3) pages.push("ellipsis-r");
+    if (totalPages > 1) pages.push(totalPages - 1);
+    return pages;
+  }, [totalPages, safePage]);
+
+  const btnBase = "h-7 min-w-[1.75rem] px-1.5 rounded text-xs border border-border transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
+  const btnIdle = `${btnBase} bg-surface hover:bg-hover text-text-secondary`;
+  const btnActive = `${btnBase} bg-primary/20 border-primary text-primary font-medium`;
 
   return (
     <div>
@@ -100,15 +130,56 @@ export function DataTable<T extends Record<string, any>>({
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-3 text-xs text-text-secondary">
-          <span>Showing {page * pageSize + 1}–{Math.min((page + 1) * pageSize, sorted.length)} of {sorted.length}</span>
-          <div className="flex gap-1">
-            <button onClick={() => setPage(Math.max(0, page - 1))} disabled={page === 0}
-              className="px-2 py-1 rounded bg-surface border border-border hover:bg-hover disabled:opacity-50">Prev</button>
-            <button onClick={() => setPage(Math.min(totalPages - 1, page + 1))} disabled={page >= totalPages - 1}
-              className="px-2 py-1 rounded bg-surface border border-border hover:bg-hover disabled:opacity-50">Next</button>
+
+      {/* Pagination bar */}
+      {(sorted.length > 0) && (
+        <div className="flex items-center justify-between mt-3 gap-4">
+          {/* Left: row count + page size selector */}
+          <div className="flex items-center gap-3 text-xs text-text-secondary">
+            <span>{rangeStart}–{rangeEnd} of {sorted.length}</span>
+            {pageSizeSelector && sorted.length > PAGE_SIZE_OPTIONS[0] && (
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                className="bg-surface border border-border rounded px-1.5 py-1 text-xs text-text focus:border-primary focus:outline-none"
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n} / page</option>
+                ))}
+              </select>
+            )}
           </div>
+
+          {/* Right: page navigation */}
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(0)} disabled={safePage === 0} className={btnIdle} title="First page">
+                <ChevronsLeft size={14} />
+              </button>
+              <button onClick={() => setPage(safePage - 1)} disabled={safePage === 0} className={btnIdle} title="Previous page">
+                <ChevronLeft size={14} />
+              </button>
+              {pageButtons.map((p, i) =>
+                typeof p === "string" ? (
+                  <span key={p + i} className="px-1 text-xs text-text-disabled select-none">...</span>
+                ) : (
+                  <button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    className={p === safePage ? btnActive : btnIdle}
+                  >
+                    {p + 1}
+                  </button>
+                )
+              )}
+              <button onClick={() => setPage(safePage + 1)} disabled={safePage >= totalPages - 1} className={btnIdle} title="Next page">
+                <ChevronRight size={14} />
+              </button>
+              <button onClick={() => setPage(totalPages - 1)} disabled={safePage >= totalPages - 1} className={btnIdle} title="Last page">
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

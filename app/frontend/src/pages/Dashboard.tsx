@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getHubs, getSpokes, getStockoutRisk } from "../lib/api";
 import { Panel } from "../components/ui/Panel";
@@ -17,6 +18,7 @@ const riskColumns: Column<StockoutRisk>[] = [
 ];
 
 export function Dashboard() {
+  const navigate = useNavigate();
   const { data: hubs } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
   const { data: spokes } = useQuery({ queryKey: ["spokes"], queryFn: () => getSpokes() });
   const { data: risks, isLoading: risksLoading } = useQuery({ queryKey: ["stockout-risk"], queryFn: getStockoutRisk });
@@ -42,7 +44,8 @@ export function Dashboard() {
       </div>
 
       <Panel title="Stockout Risk — All Nodes" loading={risksLoading}>
-        {risks && <DataTable columns={riskColumns} data={risks} pageSize={15} />}
+        {risks && <DataTable columns={riskColumns} data={risks} pageSize={15}
+          onRowClick={(row) => navigate(`/${row.node_type === "hub" ? "hubs" : "spokes"}/${row.node_id}`)} />}
       </Panel>
     </div>
   );

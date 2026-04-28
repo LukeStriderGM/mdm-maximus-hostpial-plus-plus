@@ -8,6 +8,11 @@ import { SpokeDetail } from "./pages/SpokeDetail";
 import { HubsList } from "./pages/HubsList";
 import { SpokesList } from "./pages/SpokesList";
 import { Upload } from "./pages/Upload";
+import { SupplyDemand } from "./pages/SupplyDemand";
+import { InventoryMarket } from "./pages/InventoryMarket";
+import { InventoryDetail } from "./pages/InventoryDetail";
+import { NetworkTopology } from "./pages/NetworkTopology";
+import { Explainability } from "./pages/Explainability";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -25,6 +30,11 @@ export default function App() {
             <Route path="/hubs/:id" element={<HubDetail />} />
             <Route path="/spokes" element={<SpokesList />} />
             <Route path="/spokes/:id" element={<SpokeDetail />} />
+            <Route path="/inventory" element={<InventoryMarket />} />
+            <Route path="/inventory/item" element={<InventoryDetail />} />
+            <Route path="/supply-demand" element={<SupplyDemand />} />
+            <Route path="/topology" element={<NetworkTopology />} />
+            <Route path="/explainability" element={<Explainability />} />
             <Route path="/upload" element={<Upload />} />
           </Route>
         </Routes>

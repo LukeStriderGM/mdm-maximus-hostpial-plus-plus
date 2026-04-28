@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getSpoke, getInventory, getInventoryEvents, getDaysOfSupply, getDemandGap, getDemandSignals } from "../lib/api";
 import { Panel } from "../components/ui/Panel";
 import { StatCard } from "../components/ui/StatCard";
@@ -9,9 +10,11 @@ import { TimeSeriesChart } from "../components/ui/TimeSeriesChart";
 import { GaugeChart } from "../components/ui/GaugeChart";
 import { BarChart } from "../components/ui/BarChart";
 import { Spinner } from "../components/ui/Spinner";
+import { InventoryFormModal } from "../components/ui/InventoryFormModal";
+import { Pencil, Plus } from "lucide-react";
 import type { InventoryItem, DemandSupplyGap } from "../lib/api";
 
-const invColumns: Column<InventoryItem>[] = [
+const baseInvColumns: Column<InventoryItem>[] = [
   { key: "product_type", header: "Type" },
   { key: "product_noun", header: "Category" },
   { key: "manufacturer", header: "Manufacturer" },
@@ -29,6 +32,37 @@ const gapColumns: Column<DemandSupplyGap>[] = [
 
 export function SpokeDetail() {
   const { id } = useParams<{ id: string }>();
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | undefined>();
+
+  const openCreate = () => { setEditItem(undefined); setModalOpen(true); };
+  const openEdit = (item: InventoryItem) => { setEditItem(item); setModalOpen(true); };
+  const onMutationSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ["inventory", id] });
+    queryClient.invalidateQueries({ queryKey: ["dos", id] });
+    queryClient.invalidateQueries({ queryKey: ["gaps", id] });
+    queryClient.invalidateQueries({ queryKey: ["events", id] });
+  };
+
+  const invColumns: Column<InventoryItem>[] = [
+    ...baseInvColumns,
+    {
+      key: "_actions",
+      header: "",
+      sortable: false,
+      render: (row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+          className="p-1 rounded hover:bg-hover text-text-secondary hover:text-text"
+          title="Edit item"
+        >
+          <Pencil size={14} />
+        </button>
+      ),
+    },
+  ];
+
   const { data: spoke, isLoading } = useQuery({ queryKey: ["spoke", id], queryFn: () => getSpoke(id!) });
   const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }) });
   const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!) });
@@ -84,8 +118,15 @@ export function SpokeDetail() {
         </Panel>
       )}
 
-      <Panel title="Inventory">
-        {inventory && <DataTable columns={invColumns} data={inventory} />}
+      <Panel
+        title="Inventory"
+        actions={
+          <button onClick={openCreate} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-primary text-white hover:bg-primary/90">
+            <Plus size={14} /> Add Item
+          </button>
+        }
+      >
+        {inventory && <DataTable columns={invColumns} data={inventory} pageSize={20} />}
       </Panel>
 
       <div className="grid grid-cols-2 gap-4">
@@ -111,8 +152,17 @@ export function SpokeDetail() {
       </div>
 
       <Panel title="Demand-Supply Gap">
-        {gaps && <DataTable columns={gapColumns} data={gaps} />}
+        {gaps && <DataTable columns={gapColumns} data={gaps} pageSize={10} />}
       </Panel>
+
+      <InventoryFormModal
+        item={editItem}
+        nodeId={id!}
+        nodeType="spoke"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSuccess={onMutationSuccess}
+      />
     </div>
   );
 }

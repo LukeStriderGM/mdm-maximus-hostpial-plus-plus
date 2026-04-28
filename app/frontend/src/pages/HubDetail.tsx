@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getHub, getInventory, getSpokes, getInventoryEvents, getDaysOfSupply,
   getHubDemand, getHubInventorySummary, getHubStockoutRisk, getHubCapacity,
@@ -13,9 +14,11 @@ import { GaugeChart } from "../components/ui/GaugeChart";
 import { BarChart } from "../components/ui/BarChart";
 import { NodeCard } from "../components/ui/NodeCard";
 import { Spinner } from "../components/ui/Spinner";
+import { InventoryFormModal } from "../components/ui/InventoryFormModal";
+import { Pencil, Plus } from "lucide-react";
 import type { InventoryItem, Spoke, DemandSignal } from "../lib/api";
 
-const invColumns: Column<InventoryItem>[] = [
+const baseInvColumns: Column<InventoryItem>[] = [
   { key: "product_type", header: "Type" },
   { key: "product_noun", header: "Category" },
   { key: "item_description", header: "Description" },
@@ -36,6 +39,35 @@ const demandColumns: Column<DemandSignal>[] = [
 export function HubDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editItem, setEditItem] = useState<InventoryItem | undefined>();
+
+  const openCreate = () => { setEditItem(undefined); setModalOpen(true); };
+  const openEdit = (item: InventoryItem) => { setEditItem(item); setModalOpen(true); };
+  const onMutationSuccess = () => {
+    queryClient.invalidateQueries({ queryKey: ["inventory", id] });
+    queryClient.invalidateQueries({ queryKey: ["hub-inv-summary", id] });
+    queryClient.invalidateQueries({ queryKey: ["events", id] });
+  };
+
+  const invColumns: Column<InventoryItem>[] = [
+    ...baseInvColumns,
+    {
+      key: "_actions",
+      header: "",
+      sortable: false,
+      render: (row) => (
+        <button
+          onClick={(e) => { e.stopPropagation(); openEdit(row); }}
+          className="p-1 rounded hover:bg-hover text-text-secondary hover:text-text"
+          title="Edit item"
+        >
+          <Pencil size={14} />
+        </button>
+      ),
+    },
+  ];
 
   const { data: hub, isLoading } = useQuery({ queryKey: ["hub", id], queryFn: () => getHub(id!) });
   const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }) });
@@ -193,15 +225,22 @@ export function HubDetail() {
       {/* Spoke Demand Signals Table */}
       <Panel title={`Spoke Demand Signals (${hubDemand?.total_signals || 0})`}>
         {hubDemand && hubDemand.signals.length > 0 ? (
-          <DataTable columns={demandColumnsResolved} data={hubDemand.signals} />
+          <DataTable columns={demandColumnsResolved} data={hubDemand.signals} pageSize={10} />
         ) : (
           <p className="text-text-disabled text-sm">No demand signals from spokes</p>
         )}
       </Panel>
 
       {/* Hub Inventory */}
-      <Panel title="Hub Inventory">
-        {inventory && <DataTable columns={invColumns} data={inventory} />}
+      <Panel
+        title="Hub Inventory"
+        actions={
+          <button onClick={openCreate} className="flex items-center gap-1 px-2 py-1 text-xs rounded bg-primary text-white hover:bg-primary/90">
+            <Plus size={14} /> Add Item
+          </button>
+        }
+      >
+        {inventory && <DataTable columns={invColumns} data={inventory} pageSize={20} />}
       </Panel>
 
       {/* Inventory Trends */}
@@ -215,6 +254,15 @@ export function HubDetail() {
           <p className="text-text-disabled text-sm">No event data yet</p>
         )}
       </Panel>
+
+      <InventoryFormModal
+        item={editItem}
+        nodeId={id!}
+        nodeType="hub"
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSuccess={onMutationSuccess}
+      />
     </div>
   );
 }

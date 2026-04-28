@@ -47,11 +47,32 @@ export const createInventoryItem = (data: InventoryItemCreate) => request<Invent
 export const updateInventoryItem = (id: string, data: Partial<InventoryItemCreate>) => request<InventoryItem>(`/inventory/${id}`, { method: "PUT", body: JSON.stringify(data) });
 export const deleteInventoryItem = (id: string) => request<void>(`/inventory/${id}`, { method: "DELETE" });
 export const getInventoryEvents = (nodeId: string) => request<InventoryEvent[]>(`/inventory/${nodeId}/events`);
+export const searchInventory = (q: string, limit = 20) =>
+  request<ProductSearchResult[]>(`/inventory/search?q=${encodeURIComponent(q)}&limit=${limit}`);
 
 // --- Analytics ---
 export const getDaysOfSupply = (nodeId: string) => request<DaysOfSupply[]>(`/analytics/days-of-supply/${nodeId}`);
 export const getStockoutRisk = () => request<StockoutRisk[]>("/analytics/stockout-risk");
 export const getDemandGap = (spokeId: string) => request<DemandSupplyGap[]>(`/analytics/demand-gap/${spokeId}`);
+export const getInventorySummary = () => request<InventorySummaryRow[]>("/analytics/inventory-summary");
+export const getGlobalInventoryEvents = (limit = 200) => request<InventoryEvent[]>(`/inventory/events?limit=${limit}`);
+
+// --- Supply Routes ---
+export const getSupplyRoutes = () => request<SupplyRoute[]>("/supply-routes");
+
+// --- EBM Explainability ---
+export const getEBMHealth = () => request<EBMHealth>("/ebm/health");
+export const postEBMPredict = (records: EBMRecordInput[]) =>
+  request<EBMPrediction[]>("/ebm/predict", { method: "POST", body: JSON.stringify({ records }) });
+export const postEBMExplainLocal = (records: EBMRecordInput[], index = 0) =>
+  request<{ index: number; explanation: FeatureContribution[] }>(
+    `/ebm/explain/local?index=${index}`, { method: "POST", body: JSON.stringify({ records }) });
+export const getEBMExplainGlobal = () =>
+  request<{ importance: GlobalImportance[] }>("/ebm/explain/global");
+export const postEBMWaterfall = (records: EBMRecordInput[], index = 0, topK = 10) =>
+  request<WaterfallResult>(
+    `/ebm/explain/waterfall?index=${index}&top_k=${topK}`,
+    { method: "POST", body: JSON.stringify({ records }) });
 
 // --- Ingestion ---
 export const uploadFile = async (file: File) => {
@@ -157,6 +178,34 @@ export interface HubStockoutRiskResponse {
   nodes: StockoutRisk[];
 }
 
+export interface SupplyRoute {
+  id: string; hub_id: string; spoke_id: string; transport_mode: string;
+  distance_km: number; transit_hours: number; status: string; last_updated: string;
+}
+
+export interface InventorySummaryRow {
+  product_type: string;
+  total_quantity: number;
+  total_reorder_threshold: number;
+  item_count: number;
+  fill_rate: number;
+  total_consumed: number;
+  total_restocked: number;
+  net_flow: number;
+}
+
+export interface ProductSearchResult {
+  product_type: string;
+  product_noun: string;
+  manufacturer: string | null;
+  catalog_number: string | null;
+  cold_chain_required: boolean;
+  total_quantity: number;
+  total_reorder: number;
+  location_count: number;
+  node_count: number;
+}
+
 export interface HubCapacityResponse {
   hub_id: string;
   hub_name: string;
@@ -167,4 +216,64 @@ export interface HubCapacityResponse {
   spokes_operational: number;
   spokes_degraded: number;
   spokes_offline: number;
+}
+
+// --- EBM Explainability Types ---
+export interface EBMRecordInput {
+  inventory_units: number;
+  expiry_hours_remaining?: number;
+  temperature_excursion_flag?: number;
+  transport_delay_hours?: number;
+  route_reliability_score?: number;
+  demand_rate?: number;
+  casualty_rate?: number;
+  cold_chain_health_score?: number;
+  backup_supply_available?: number;
+  node_id?: string;
+  node_name?: string;
+}
+
+export interface EBMPrediction {
+  node_id: string;
+  node_name: string;
+  failure_probability: number;
+  time_to_failure_hours: number;
+  risk_level: string;
+}
+
+export interface FeatureContribution {
+  feature: string;
+  value: number | null;
+  shap_value: number;
+  abs_shap: number;
+}
+
+export interface WaterfallStep {
+  feature: string;
+  value: number | null;
+  contribution: number;
+  start: number;
+  end: number;
+}
+
+export interface WaterfallResult {
+  index: number;
+  prediction_probability: number;
+  base_value: number;
+  top_k: number;
+  steps: WaterfallStep[];
+  final_value: number;
+}
+
+export interface GlobalImportance {
+  feature: string;
+  importance: number;
+}
+
+export interface EBMHealth {
+  status: string;
+  model_loaded: boolean;
+  model_backend: string | null;
+  classifier: string | null;
+  regressor: string | null;
 }

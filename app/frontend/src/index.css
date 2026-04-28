@@ -77,6 +77,20 @@ body {
   background: rgba(61, 113, 217, 0.15) !important;
 }
 
+/* Ticker tape animation */
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-ticker {
+  animation: ticker-scroll 30s linear infinite;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
 /* MapLibre controls — dark theme overrides */
 .maplibregl-ctrl-group {
   background: var(--color-card) !important;

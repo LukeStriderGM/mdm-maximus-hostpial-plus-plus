@@ -1,0 +1,32 @@
+stockout_forecaster:
+  critical_days: 3
+  warning_days: 7
+  caution_days: 14
+  forecast_horizon_days: 30
+
+route_risk_classifier:
+  risk_levels: [low, medium, high, critical]
+
+cascade_simulator:
+  simulation_days: 90
+  scenarios:
+    - name: partial_degradation
+      throughput_reduction: 0.5
+    - name: severe_degradation
+      throughput_reduction: 0.8
+    - name: hub_offline
+      throughput_reduction: 1.0
+
+sourcing_recommender:
+  similarity_threshold: 0.7
+  max_recommendations: 5
+
+product_dependencies:
+  blood_transfusion:
+    - blood_collection_tubes
+    - testing_reagents
+    - cold_storage
+    - transfusion_sets
+  surgical:
+    - surgical_gloves
+    - exam_gloves

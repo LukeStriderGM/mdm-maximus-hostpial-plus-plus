@@ -1,0 +1,30 @@
+# Model artifacts
+*.pt
+*.pth
+*.onnx
+*.h5
+*.safetensors
+*.bin
+*.ckpt
+
+# Training outputs
+checkpoints/
+wandb/
+mlruns/
+tensorboard/
+lightning_logs/
+
+# Large local datasets
+data/*.csv
+data/*.parquet
+data/*.feather
+data/*.arrow
+
+# Cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
