@@ -69,16 +69,15 @@ export function HubDetail() {
     },
   ];
 
-  const qEnabled = !!id;
-  const { data: hub, isLoading } = useQuery({ queryKey: ["hub", id], queryFn: () => getHub(id!), enabled: qEnabled });
-  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }), enabled: qEnabled });
-  const { data: connectedSpokes } = useQuery({ queryKey: ["spokes", id], queryFn: () => getSpokes(id!), enabled: qEnabled });
-  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!), enabled: qEnabled });
-  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!), enabled: qEnabled });
-  const { data: hubDemand } = useQuery({ queryKey: ["hub-demand", id], queryFn: () => getHubDemand(id!), enabled: qEnabled });
-  const { data: hubInvSummary } = useQuery({ queryKey: ["hub-inv-summary", id], queryFn: () => getHubInventorySummary(id!), enabled: qEnabled });
-  const { data: hubRisk } = useQuery({ queryKey: ["hub-risk", id], queryFn: () => getHubStockoutRisk(id!), enabled: qEnabled });
-  const { data: hubCapacity } = useQuery({ queryKey: ["hub-capacity", id], queryFn: () => getHubCapacity(id!), enabled: qEnabled });
+  const { data: hub, isLoading } = useQuery({ queryKey: ["hub", id], queryFn: () => getHub(id!) });
+  const { data: inventory } = useQuery({ queryKey: ["inventory", id], queryFn: () => getInventory({ node_id: id!, limit: "500" }) });
+  const { data: connectedSpokes } = useQuery({ queryKey: ["spokes", id], queryFn: () => getSpokes(id!) });
+  const { data: events } = useQuery({ queryKey: ["events", id], queryFn: () => getInventoryEvents(id!) });
+  const { data: dos } = useQuery({ queryKey: ["dos", id], queryFn: () => getDaysOfSupply(id!) });
+  const { data: hubDemand } = useQuery({ queryKey: ["hub-demand", id], queryFn: () => getHubDemand(id!) });
+  const { data: hubInvSummary } = useQuery({ queryKey: ["hub-inv-summary", id], queryFn: () => getHubInventorySummary(id!) });
+  const { data: hubRisk } = useQuery({ queryKey: ["hub-risk", id], queryFn: () => getHubStockoutRisk(id!) });
+  const { data: hubCapacity } = useQuery({ queryKey: ["hub-capacity", id], queryFn: () => getHubCapacity(id!) });
 
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>;
   if (!hub) return <p className="text-text-secondary">Hub not found</p>;
@@ -89,19 +88,19 @@ export function HubDetail() {
 
   // Build stockout risk lookup per node
   const riskByNode: Record<string, { critical: number; overall: string }> = {};
-  (hubRisk?.nodes || []).forEach((n) => {
+  hubRisk?.nodes.forEach((n) => {
     riskByNode[n.node_id] = { critical: n.critical_items, overall: n.overall_risk };
   });
 
   // Demand signals with spoke name resolved
   const demandColumnsResolved: Column<DemandSignal>[] = [
-    { key: "spoke_id", header: "Spoke", render: (r) => spokeNames[r.spoke_id] || String(r.spoke_id || "").slice(0, 8) },
+    { key: "spoke_id", header: "Spoke", render: (r) => spokeNames[r.spoke_id] || r.spoke_id.slice(0, 8) },
     ...demandColumns.slice(1),
   ];
 
   // Demand by product type for bar chart
   const demandByType: Record<string, number> = {};
-  (hubDemand?.signals || []).forEach((s) => {
+  hubDemand?.signals.forEach((s) => {
     demandByType[s.product_type] = (demandByType[s.product_type] || 0) + s.quantity_needed;
   });
   const demandChartData = Object.entries(demandByType).map(([pt, qty]) => ({
@@ -152,21 +151,21 @@ export function HubDetail() {
       {/* Summary Stat Cards */}
       <div className="grid grid-cols-6 gap-3">
         <StatCard label="Network Items" value={hubInvSummary?.total_items || 0} />
-        <StatCard label="Connected Spokes" value={(connectedSpokes || []).length || 0} />
+        <StatCard label="Connected Spokes" value={connectedSpokes?.length || 0} />
         <StatCard label="Total Demand" value={hubDemand?.total_quantity_needed || 0} />
         <StatCard label="Active Requests" value={hubDemand?.total_signals || 0}
           status={hubDemand && hubDemand.total_signals > 0 ? "warning" : "default"} />
         <StatCard label="Critical Items"
-          value={(hubRisk?.nodes || []).reduce((s, n) => s + n.critical_items, 0) || 0}
-          status={(hubRisk?.nodes || []).some((n) => n.critical_items > 0) ? "error" : "success"} />
+          value={hubRisk?.nodes.reduce((s, n) => s + n.critical_items, 0) || 0}
+          status={hubRisk?.nodes.some((n) => n.critical_items > 0) ? "error" : "success"} />
         <StatCard label="Network Risk" value={hubRisk?.overall_risk || "healthy"}
           status={riskStatus(hubRisk?.overall_risk || "healthy")} />
       </div>
 
       {/* Connected Spokes with health */}
-      <Panel title={`Connected Spokes (${(connectedSpokes || []).length || 0})`}>
+      <Panel title={`Connected Spokes (${connectedSpokes?.length || 0})`}>
         <div className="grid grid-cols-4 gap-3">
-          {(connectedSpokes || []).map((s: Spoke) => (
+          {connectedSpokes?.map((s: Spoke) => (
             <NodeCard
               key={s.id}
               name={s.name}
