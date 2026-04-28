@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   getHubs, getSpokes, getInventorySummary, postBestPath,
@@ -30,6 +30,7 @@ interface BestPathPanelProps {
   onClose: () => void;
   onShowPath: (result: PathResult) => void;
   prefillDestination?: { id: string; type: string } | null;
+  showMapAction?: boolean;
 }
 
 function TransportIcon({ mode }: { mode: string }) {
@@ -111,8 +112,8 @@ function StepTimeline({ steps }: { steps: PathStep[] }) {
 }
 
 function PathResultCard({
-  result, rank, onShowPath,
-}: { result: PathResult; rank: number; onShowPath: (r: PathResult) => void }) {
+  result, rank, onShowPath, showMapAction,
+}: { result: PathResult; rank: number; onShowPath: (r: PathResult) => void; showMapAction: boolean }) {
   const typeStyle = PATH_TYPE_COLORS[result.path_type] || PATH_TYPE_COLORS.direct;
 
   return (
@@ -131,12 +132,14 @@ function PathResultCard({
             label={`risk: ${result.risk_summary}`}
           />
         </div>
-        <button
-          onClick={() => onShowPath(result)}
-          className="text-[10px] text-info hover:text-info/80 font-medium"
-        >
-          Show on Map
-        </button>
+        {showMapAction && (
+          <button
+            onClick={() => onShowPath(result)}
+            className="text-[10px] text-info hover:text-info/80 font-medium"
+          >
+            Show on Map
+          </button>
+        )}
       </div>
 
       {/* Metrics row */}
@@ -162,10 +165,10 @@ function PathResultCard({
   );
 }
 
-export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestPathPanelProps) {
+export function BestPathPanel({ onClose, onShowPath, prefillDestination, showMapAction = true }: BestPathPanelProps) {
   const { data: hubs } = useQuery({ queryKey: ["hubs"], queryFn: getHubs });
   const { data: spokes } = useQuery({ queryKey: ["spokes"], queryFn: () => getSpokes() });
-  const { data: inventorySummary } = useQuery({ queryKey: ["inventory-summary"], queryFn: getInventorySummary });
+  const { data: inventorySummary, isLoading: invLoading, isError: invError } = useQuery({ queryKey: ["inventory-summary"], queryFn: getInventorySummary });
 
   const productTypes = useMemo(() => {
     if (!inventorySummary) return [];
@@ -173,29 +176,26 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
   }, [inventorySummary]);
 
   const [destId, setDestId] = useState(prefillDestination?.id || "");
-  const [destType, setDestType] = useState(prefillDestination?.type || "");
   const [productType, setProductType] = useState("");
   const [priority, setPriority] = useState("routine");
+
+  // Sync prefillDestination when it changes (e.g., right-click a different spoke)
+  useEffect(() => {
+    if (prefillDestination?.id) {
+      setDestId(prefillDestination.id);
+    }
+  }, [prefillDestination?.id]);
 
   const mutation = useMutation({
     mutationFn: postBestPath,
   });
 
-  // Update destination type when node is selected
-  const handleDestChange = (nodeId: string) => {
-    setDestId(nodeId);
-    if (hubs?.find((h) => h.id === nodeId)) {
-      setDestType("hub");
-    } else if (spokes?.find((s) => s.id === nodeId)) {
-      setDestType("spoke");
-    }
-  };
+  const nodesLoading = !hubs && !spokes;
 
   const handleSubmit = () => {
     if (!destId || !productType) return;
     mutation.mutate({
       destination_node_id: destId,
-      destination_node_type: destType,
       product_type: productType,
       priority,
     });
@@ -206,7 +206,7 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         <h3 className="text-sm font-semibold text-text-primary">Best Path Finder</h3>
-        <button onClick={onClose} className="text-text-disabled hover:text-text-primary text-lg leading-none">&times;</button>
+        <button onClick={onClose} aria-label="Close" className="text-text-disabled hover:text-text-primary text-lg leading-none">&times;</button>
       </div>
 
       {/* Form */}
@@ -216,10 +216,11 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
           <label className="text-[10px] text-text-disabled uppercase tracking-wider">Destination</label>
           <select
             value={destId}
-            onChange={(e) => handleDestChange(e.target.value)}
-            className="w-full mt-0.5 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-info"
+            onChange={(e) => setDestId(e.target.value)}
+            disabled={nodesLoading}
+            className="w-full mt-0.5 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-info disabled:opacity-50"
           >
-            <option value="">Select node...</option>
+            <option value="">{nodesLoading ? "Loading nodes..." : "Select node..."}</option>
             {hubs && hubs.length > 0 && (
               <optgroup label="Hubs">
                 {hubs.map((h) => <option key={h.id} value={h.id}>{h.name}</option>)}
@@ -239,9 +240,10 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
           <select
             value={productType}
             onChange={(e) => setProductType(e.target.value)}
-            className="w-full mt-0.5 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-info"
+            disabled={invLoading}
+            className="w-full mt-0.5 bg-surface border border-border rounded px-2 py-1.5 text-xs text-text-primary focus:outline-none focus:border-info disabled:opacity-50"
           >
-            <option value="">Select product...</option>
+            <option value="">{invLoading ? "Loading products..." : invError ? "Failed to load products" : "Select product..."}</option>
             {productTypes.map((pt) => <option key={pt} value={pt}>{pt}</option>)}
           </select>
         </div>
@@ -284,18 +286,18 @@ export function BestPathPanel({ onClose, onShowPath, prefillDestination }: BestP
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {mutation.isError && (
           <div className="text-xs text-error-text bg-error/10 rounded p-2">
-            {(mutation.error as Error).message || "No paths found"}
+            {mutation.error instanceof Error ? mutation.error.message : "Request failed"}
           </div>
         )}
 
-        {mutation.data && mutation.data.length === 0 && (
+        {mutation.isSuccess && mutation.data.length === 0 && (
           <div className="text-xs text-text-disabled text-center py-4">
-            No paths found with available inventory.
+            No paths found — no other node has this product in stock.
           </div>
         )}
 
         {mutation.data?.map((result, i) => (
-          <PathResultCard key={i} result={result} rank={i} onShowPath={onShowPath} />
+          <PathResultCard key={i} result={result} rank={i} onShowPath={onShowPath} showMapAction={showMapAction} />
         ))}
       </div>
     </div>

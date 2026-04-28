@@ -638,7 +638,16 @@ export function NetworkTopology() {
   }, [selectedNode, routes]);
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-6rem)]">
+    <div className="relative h-[calc(100vh-6rem)]">
+    {showPathPanel && (
+      <BestPathPanel
+        onClose={() => setShowPathPanel(false)}
+        onShowPath={() => {}}
+        prefillDestination={selectedNode ? { id: selectedNode.id, type: selectedNode.type } : null}
+        showMapAction={false}
+      />
+    )}
+    <div className="flex gap-4 h-full">
       {/* Canvas area */}
       <div className="flex-1 flex flex-col gap-4 min-w-0">
         <div className="flex items-center justify-between">
@@ -667,17 +676,6 @@ export function NetworkTopology() {
           <div className="absolute bottom-3 left-3 text-[10px] text-text-disabled">
             Scroll to zoom / Drag to pan / Click node to inspect / Double-click to navigate
           </div>
-
-          {/* Best Path Panel */}
-          {showPathPanel && (
-            <BestPathPanel
-              onClose={() => setShowPathPanel(false)}
-              onShowPath={() => {}}
-              prefillDestination={selectedNode ? { id: selectedNode.id, type: selectedNode.type } : null}
-            />
-          )}
-
-          {/* Find Best Path button */}
           {!showPathPanel && (
             <button
               onClick={() => setShowPathPanel(true)}
@@ -819,6 +817,7 @@ export function NetworkTopology() {
           </Panel>
         )}
       </div>
+    </div>
     </div>
   );
 }

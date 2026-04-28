@@ -129,6 +129,13 @@ export function SpokeDetail() {
     : "n/a";
   const riskLabel = mlPrediction?.risk_level || "caution";
 
+  const topDrivers = useMemo(() => {
+    if (!mlWaterfall?.steps?.length) return [];
+    return [...mlWaterfall.steps]
+      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
+      .slice(0, 3);
+  }, [mlWaterfall]);
+
   if (isLoading) return <div className="flex justify-center py-20"><Spinner size={32} /></div>;
   if (!spoke) return <p className="text-text-secondary">Spoke not found</p>;
 
@@ -148,13 +155,6 @@ export function SpokeDetail() {
     "On Hand": g.quantity_on_hand,
     Demanded: g.quantity_demanded,
   })) || [];
-
-  const topDrivers = useMemo(() => {
-    if (!mlWaterfall?.steps?.length) return [];
-    return [...mlWaterfall.steps]
-      .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
-      .slice(0, 3);
-  }, [mlWaterfall]);
 
   return (
     <div className="space-y-4">

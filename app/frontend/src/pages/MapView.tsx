@@ -241,7 +241,12 @@ export function MapView() {
     });
 
     mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
+    return () => {
+      pathMarkersRef.current.forEach((m) => m.remove());
+      pathMarkersRef.current = [];
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   // Add markers when data loads

@@ -303,6 +303,6 @@ export interface PathResult {
 }
 
 export interface BestPathRequest {
-  destination_node_id: string; destination_node_type: string;
+  destination_node_id: string;
   product_type: string; priority?: string; max_results?: number;
 }
