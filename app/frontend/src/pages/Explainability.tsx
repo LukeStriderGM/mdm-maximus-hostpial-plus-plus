@@ -279,7 +279,9 @@ export function Explainability() {
                     </div>
                     <div>
                       <p className="text-text-secondary">Score Path</p>
-                      <p className="font-mono text-text">{hoveredStep.start.toFixed(4)} -> {hoveredStep.end.toFixed(4)}</p>
+                      <p className="font-mono text-text">
+                        {`${hoveredStep.start.toFixed(4)} -> ${hoveredStep.end.toFixed(4)}`}
+                      </p>
                     </div>
                   </div>
                 </div>
