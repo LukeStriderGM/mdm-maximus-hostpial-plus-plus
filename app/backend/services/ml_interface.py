@@ -151,7 +151,10 @@ _log = _logging.getLogger(__name__)
 def _create_predictor():
     # Prefer the explicit env var, otherwise fall back to the conventional
     # artifact path next to the ml_models/ tree shipped with the repo.
-    default_path = _Path(__file__).resolve().parents[3] / "ml_models" / "artifacts" / "blood_logistics_ebm.pkl"
+    try:
+        default_path = _Path(__file__).resolve().parents[3] / "ml_models" / "artifacts" / "blood_logistics_ebm.pkl"
+    except IndexError:
+        default_path = _Path("/ml_models/artifacts/blood_logistics_ebm.pkl")
     model_path = os.getenv("EBM_MODEL_PATH") or str(default_path)
     if _Path(model_path).exists():
         try:
