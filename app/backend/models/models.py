@@ -51,7 +51,6 @@ class Hub(Base):
     registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     spokes: Mapped[list["Spoke"]] = relationship("Spoke", back_populates="hub", cascade="all, delete-orphan")
-    supply_routes: Mapped[list["SupplyRoute"]] = relationship("SupplyRoute", back_populates="hub", cascade="all, delete-orphan")
 
 
 class Spoke(Base):
@@ -60,13 +59,16 @@ class Spoke(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     hub_id: Mapped[str] = mapped_column(String(36), ForeignKey("hubs.id"), nullable=False)
+    parent_spoke_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("spokes.id"), nullable=True)
     latitude: Mapped[float] = mapped_column(Float, nullable=False)
     longitude: Mapped[float] = mapped_column(Float, nullable=False)
     status: Mapped[NodeStatus] = mapped_column(Enum(NodeStatus), default=NodeStatus.operational)
     registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     hub: Mapped["Hub"] = relationship("Hub", back_populates="spokes")
-    supply_routes: Mapped[list["SupplyRoute"]] = relationship("SupplyRoute", back_populates="spoke", cascade="all, delete-orphan")
+    parent_spoke: Mapped["Spoke | None"] = relationship(
+        "Spoke", remote_side=[id], foreign_keys=[parent_spoke_id], backref="child_spokes"
+    )
 
 
 class InventoryItem(Base):
@@ -105,16 +107,15 @@ class SupplyRoute(Base):
     __tablename__ = "supply_routes"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    hub_id: Mapped[str] = mapped_column(String(36), ForeignKey("hubs.id"), nullable=False)
-    spoke_id: Mapped[str] = mapped_column(String(36), ForeignKey("spokes.id"), nullable=False)
+    source_node_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    source_node_type: Mapped[NodeType] = mapped_column(Enum(NodeType), nullable=False)
+    dest_node_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    dest_node_type: Mapped[NodeType] = mapped_column(Enum(NodeType), nullable=False)
     transport_mode: Mapped[str] = mapped_column(String(50), nullable=False)
     distance_km: Mapped[float] = mapped_column(Float, default=0.0)
     transit_hours: Mapped[float] = mapped_column(Float, default=0.0)
     status: Mapped[RouteStatus] = mapped_column(Enum(RouteStatus), default=RouteStatus.available)
     last_updated: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-
-    hub: Mapped["Hub"] = relationship("Hub", back_populates="supply_routes")
-    spoke: Mapped["Spoke"] = relationship("Spoke", back_populates="supply_routes")
 
 
 class InventoryEvent(Base):

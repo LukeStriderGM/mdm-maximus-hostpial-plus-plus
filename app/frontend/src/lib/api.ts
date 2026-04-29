@@ -101,10 +101,11 @@ export interface Hub {
 export interface HubCreate { name: string; latitude: number; longitude: number; status?: string; capacity?: number; }
 
 export interface Spoke {
-  id: string; name: string; hub_id: string; latitude: number; longitude: number;
+  id: string; name: string; hub_id: string; parent_spoke_id?: string | null;
+  latitude: number; longitude: number;
   status: string; registered_at: string; inventory_count?: number;
 }
-export interface SpokeCreate { name: string; hub_id: string; latitude: number; longitude: number; status?: string; }
+export interface SpokeCreate { name: string; hub_id: string; parent_spoke_id?: string; latitude: number; longitude: number; status?: string; }
 
 export interface InventoryItem {
   id: string; node_id: string; node_type: string; product_noun: string;
@@ -185,7 +186,8 @@ export interface HubStockoutRiskResponse {
 }
 
 export interface SupplyRoute {
-  id: string; hub_id: string; spoke_id: string; transport_mode: string;
+  id: string; source_node_id: string; source_node_type: string;
+  dest_node_id: string; dest_node_type: string; transport_mode: string;
   distance_km: number; transit_hours: number; status: string; last_updated: string;
 }
 

@@ -153,8 +153,9 @@ async def seed(num_hubs: int = 5, num_spokes: int = 20):
             logger.info("Hub: %s", name)
         await db.flush()
 
-        # --- Create Spokes ---
+        # --- Create Spokes (including child spokes) ---
         spokes = []
+        primary_spokes = []
         for i, (name, lat, lng) in enumerate(spoke_bases):
             parent = hubs[i % len(hubs)]
             spoke = Spoke(
@@ -170,22 +171,49 @@ async def seed(num_hubs: int = 5, num_spokes: int = 20):
             )
             db.add(spoke)
             spokes.append(spoke)
+            primary_spokes.append(spoke)
             logger.info("Spoke: %s -> Hub: %s", name, parent.name)
+        await db.flush()
+
+        # --- Create Child Spokes (~30% of primary spokes get 1-2 children) ---
+        child_spokes = []
+        for spoke in primary_spokes:
+            if random.random() < 0.30:
+                num_children = random.randint(1, 2)
+                for c in range(num_children):
+                    child = Spoke(
+                        id=_uid(),
+                        name=f"{spoke.name} FWD-{c + 1}",
+                        hub_id=spoke.hub_id,
+                        parent_spoke_id=spoke.id,
+                        latitude=spoke.latitude + random.uniform(-0.3, 0.3),
+                        longitude=spoke.longitude + random.uniform(-0.3, 0.3),
+                        status=random.choices(
+                            [NodeStatus.operational, NodeStatus.degraded, NodeStatus.offline],
+                            weights=[65, 25, 10],
+                        )[0],
+                    )
+                    db.add(child)
+                    spokes.append(child)
+                    child_spokes.append(child)
+                    logger.info("Child Spoke: %s -> Parent Spoke: %s", child.name, spoke.name)
         await db.flush()
 
         all_nodes = [(h.id, NodeType.hub) for h in hubs] + [(s.id, NodeType.spoke) for s in spokes]
 
-        # --- Create Supply Routes (each spoke to its hub) ---
-        for spoke in spokes:
-            parent = next(h for h in hubs if h.id == spoke.hub_id)
-            dist = _haversine(parent.latitude, parent.longitude, spoke.latitude, spoke.longitude)
+        # --- Create Supply Routes ---
+        speed_map = {"ground": 60, "rotary-wing": 220, "fixed-wing": 800, "maritime": 30}
+
+        def _make_route(src_id, src_type, dst_id, dst_type, lat1, lng1, lat2, lng2):
+            dist = _haversine(lat1, lng1, lat2, lng2)
             mode = random.choice(TRANSPORT_MODES)
-            speed_map = {"ground": 60, "rotary-wing": 220, "fixed-wing": 800, "maritime": 30}
             transit = dist / speed_map[mode]
-            route = SupplyRoute(
+            return SupplyRoute(
                 id=_uid(),
-                hub_id=parent.id,
-                spoke_id=spoke.id,
+                source_node_id=src_id,
+                source_node_type=src_type,
+                dest_node_id=dst_id,
+                dest_node_type=dst_type,
                 transport_mode=mode,
                 distance_km=round(dist, 1),
                 transit_hours=round(transit, 2),
@@ -194,7 +222,38 @@ async def seed(num_hubs: int = 5, num_spokes: int = 20):
                     weights=[80, 15, 5],
                 )[0],
             )
-            db.add(route)
+
+        # Hub -> primary spoke routes
+        for spoke in primary_spokes:
+            parent = next(h for h in hubs if h.id == spoke.hub_id)
+            db.add(_make_route(
+                parent.id, NodeType.hub, spoke.id, NodeType.spoke,
+                parent.latitude, parent.longitude, spoke.latitude, spoke.longitude,
+            ))
+
+        # Parent spoke -> child spoke routes
+        for child in child_spokes:
+            parent_spoke = next(s for s in primary_spokes if s.id == child.parent_spoke_id)
+            db.add(_make_route(
+                parent_spoke.id, NodeType.spoke, child.id, NodeType.spoke,
+                parent_spoke.latitude, parent_spoke.longitude, child.latitude, child.longitude,
+            ))
+
+        # Spoke-to-spoke lateral routes (~20% of primary spoke pairs within same hub)
+        from itertools import combinations
+        hub_spoke_groups = {}
+        for spoke in primary_spokes:
+            hub_spoke_groups.setdefault(spoke.hub_id, []).append(spoke)
+        for hub_id, group in hub_spoke_groups.items():
+            if len(group) < 2:
+                continue
+            pairs = list(combinations(group, 2))
+            num_lateral = max(1, int(len(pairs) * 0.20))
+            for s1, s2 in random.sample(pairs, min(num_lateral, len(pairs))):
+                db.add(_make_route(
+                    s1.id, NodeType.spoke, s2.id, NodeType.spoke,
+                    s1.latitude, s1.longitude, s2.latitude, s2.longitude,
+                ))
 
         # --- Create Inventory Items ---
         items_created = 0

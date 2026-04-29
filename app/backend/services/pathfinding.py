@@ -203,23 +203,40 @@ async def find_best_paths(
     # 2. Build adjacency list
     adj: dict[str, list[_Edge]] = {nid: [] for nid in nodes}
 
-    # Track which spokes have explicit routes
-    spokes_with_routes: set[str] = set()
+    # Track nodes that have explicit routes
+    nodes_with_routes: set[str] = set()
 
     for r in routes:
         status_str = r.status.value if hasattr(r.status, 'value') else r.status
+        src = r.source_node_id
+        dst = r.dest_node_id
+        if src not in nodes or dst not in nodes:
+            continue
         w = _edge_weight(r.transit_hours, r.distance_km, status_str, r.transport_mode, priority)
-        # Bidirectional hub <-> spoke
-        adj[r.hub_id].append(_Edge(r.spoke_id, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
-        adj[r.spoke_id].append(_Edge(r.hub_id, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
-        spokes_with_routes.add(r.spoke_id)
+        # Bidirectional edge for all route types
+        adj[src].append(_Edge(dst, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
+        adj[dst].append(_Edge(src, r.id, r.transport_mode, r.distance_km, r.transit_hours, status_str, w))
+        nodes_with_routes.add(src)
+        nodes_with_routes.add(dst)
 
     # Fallback: create spoke <-> parent hub edges from Spoke.hub_id when no SupplyRoute exists
     hub_node_map = {h.id: h for h in hubs}
+    spoke_node_map = {s.id: s for s in spokes}
     GROUND_SPEED_KPH = 60.0
     for s in spokes:
-        if s.id in spokes_with_routes:
+        if s.id in nodes_with_routes:
             continue
+        # If spoke has a parent spoke, create edge to parent spoke
+        if s.parent_spoke_id and s.parent_spoke_id in nodes:
+            ps = spoke_node_map.get(s.parent_spoke_id)
+            if ps:
+                dist_km = _haversine(s.latitude, s.longitude, ps.latitude, ps.longitude)
+                transit_h = max(dist_km / GROUND_SPEED_KPH, 0.5)
+                w = _edge_weight(transit_h, dist_km, "available", "ground", priority)
+                adj[s.id].append(_Edge(ps.id, None, "ground", round(dist_km, 1), round(transit_h, 1), "available", w))
+                adj[ps.id].append(_Edge(s.id, None, "ground", round(dist_km, 1), round(transit_h, 1), "available", w))
+                continue
+        # Otherwise fall back to parent hub
         parent = hub_node_map.get(s.hub_id)
         if not parent:
             continue

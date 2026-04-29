@@ -324,22 +324,46 @@ export function MapView() {
       markersRef.current.push(marker);
     });
 
-    // Draw route lines between hubs and spokes
+    // Draw route lines between all connected nodes
     if (hubs && spokes) {
       const hubMap = new Map(hubs.map((h) => [h.id, h]));
-      const features = spokes
-        .filter((s) => hubMap.has(s.hub_id))
-        .map((s) => ({
-          type: "Feature" as const,
-          geometry: {
-            type: "LineString" as const,
-            coordinates: [
-              [hubMap.get(s.hub_id)!.longitude, hubMap.get(s.hub_id)!.latitude],
-              [s.longitude, s.latitude],
-            ],
-          },
-          properties: { status: s.status },
-        }));
+      const spokeMap = new Map(spokes.map((s) => [s.id, s]));
+      const features: GeoJSON.Feature[] = [];
+
+      for (const s of spokes) {
+        if (s.parent_spoke_id) {
+          // Child spoke → parent spoke line
+          const parent = spokeMap.get(s.parent_spoke_id);
+          if (parent) {
+            features.push({
+              type: "Feature",
+              geometry: {
+                type: "LineString",
+                coordinates: [
+                  [parent.longitude, parent.latitude],
+                  [s.longitude, s.latitude],
+                ],
+              },
+              properties: { status: s.status, routeKind: "spoke-to-child" },
+            });
+          }
+        }
+        // Always draw line to parent hub (primary connection)
+        const hub = hubMap.get(s.hub_id);
+        if (hub && !s.parent_spoke_id) {
+          features.push({
+            type: "Feature",
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [hub.longitude, hub.latitude],
+                [s.longitude, s.latitude],
+              ],
+            },
+            properties: { status: s.status, routeKind: "hub-to-spoke" },
+          });
+        }
+      }
 
       if (mapRef.current.getSource("routes")) {
         (mapRef.current.getSource("routes") as maplibregl.GeoJSONSource).setData({
@@ -355,13 +379,17 @@ export function MapView() {
           type: "line",
           source: "routes",
           paint: {
-            "line-color": ["match", ["get", "status"],
-              "operational", "#1a7f4b",
-              "degraded", "#ff9900",
-              "offline", "#d10e5c",
+            "line-color": ["case",
+              ["==", ["get", "routeKind"], "spoke-to-child"], "#8b5cf6",
+              ["==", ["get", "status"], "operational"], "#1a7f4b",
+              ["==", ["get", "status"], "degraded"], "#ff9900",
+              ["==", ["get", "status"], "offline"], "#d10e5c",
               "#5f6268",
             ],
-            "line-width": 1.5,
+            "line-width": ["case",
+              ["==", ["get", "routeKind"], "spoke-to-child"], 1,
+              1.5,
+            ],
             "line-dasharray": [4, 4],
             "line-opacity": 0.6,
           },

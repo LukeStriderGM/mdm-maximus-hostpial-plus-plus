@@ -48,6 +48,7 @@ class HubResponse(BaseModel):
 class SpokeCreate(BaseModel):
     name: str
     hub_id: str
+    parent_spoke_id: Optional[str] = None
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
     status: str = "operational"
@@ -56,6 +57,7 @@ class SpokeCreate(BaseModel):
 class SpokeUpdate(BaseModel):
     name: Optional[str] = None
     hub_id: Optional[str] = None
+    parent_spoke_id: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     status: Optional[str] = None
@@ -65,6 +67,7 @@ class SpokeResponse(BaseModel):
     id: str
     name: str
     hub_id: str
+    parent_spoke_id: Optional[str] = None
     latitude: float
     longitude: float
     status: str
@@ -148,8 +151,10 @@ class DemandSignalResponse(BaseModel):
 # --- Supply Route Schemas ---
 
 class SupplyRouteCreate(BaseModel):
-    hub_id: str
-    spoke_id: str
+    source_node_id: str
+    source_node_type: str
+    dest_node_id: str
+    dest_node_type: str
     transport_mode: str
     distance_km: float = 0.0
     transit_hours: float = 0.0
@@ -165,8 +170,10 @@ class SupplyRouteUpdate(BaseModel):
 
 class SupplyRouteResponse(BaseModel):
     id: str
-    hub_id: str
-    spoke_id: str
+    source_node_id: str
+    source_node_type: str
+    dest_node_id: str
+    dest_node_type: str
     transport_mode: str
     distance_km: float
     transit_hours: float

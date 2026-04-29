@@ -37,7 +37,7 @@ interface GraphNode extends SimulationNodeDatum {
 
 interface GraphLink extends SimulationLinkDatum<GraphNode> {
   id: string;
-  kind: "supply-route" | "hub-mesh";
+  kind: "supply-route" | "hub-mesh" | "spoke-to-spoke" | "spoke-to-child";
   transportMode?: string;
   distanceKm?: number;
   transitHours?: number;
@@ -67,6 +67,8 @@ const RISK_GLOW: Record<string, string> = {
 const LINK_COLORS: Record<string, string> = {
   "supply-route": "#3b82f680",
   "hub-mesh": "#6c63ff40",
+  "spoke-to-spoke": "#f59e0b80",
+  "spoke-to-child": "#8b5cf680",
 };
 
 const ROUTE_STATUS_COLORS: Record<string, string> = {
@@ -153,23 +155,37 @@ export function NetworkTopology() {
       }
     }
 
-    // Supply routes (hub to spoke) — weighted by transit speed
+    // Supply routes — weighted by transit speed, classify by node types
     if (routes && routes.length > 0) {
       const hours = routes.map((r) => r.transit_hours).filter((h) => h > 0);
       const minH = Math.min(...hours, 1);
       const maxH = Math.max(...hours, 1);
       const range = maxH - minH || 1;
 
+      // Build set of child spoke IDs for classification
+      const childSpokeIds = new Set(
+        spokes.filter((s) => s.parent_spoke_id).map((s) => s.id)
+      );
+
       for (const route of routes) {
-        // Invert: low transit hours = high weight (fast = thick)
         const weight = hours.length > 1
           ? 1 - (route.transit_hours - minH) / range
           : 0.5;
+
+        // Classify route kind
+        let kind: GraphLink["kind"] = "supply-route";
+        if (route.source_node_type === "spoke" && route.dest_node_type === "spoke") {
+          // Check if either end is a child spoke
+          kind = childSpokeIds.has(route.source_node_id) || childSpokeIds.has(route.dest_node_id)
+            ? "spoke-to-child"
+            : "spoke-to-spoke";
+        }
+
         links.push({
           id: route.id,
-          source: route.hub_id,
-          target: route.spoke_id,
-          kind: "supply-route",
+          source: route.source_node_id,
+          target: route.dest_node_id,
+          kind,
           transportMode: route.transport_mode,
           distanceKm: route.distance_km,
           transitHours: route.transit_hours,
@@ -180,13 +196,23 @@ export function NetworkTopology() {
     } else {
       // Fallback: spoke.hub_id edges if routes not loaded yet
       for (const spoke of spokes) {
-        links.push({
-          id: `fallback-${spoke.hub_id}-${spoke.id}`,
-          source: spoke.hub_id,
-          target: spoke.id,
-          kind: "supply-route",
-          weight: 0.5,
-        });
+        if (spoke.parent_spoke_id) {
+          links.push({
+            id: `fallback-${spoke.parent_spoke_id}-${spoke.id}`,
+            source: spoke.parent_spoke_id,
+            target: spoke.id,
+            kind: "spoke-to-child",
+            weight: 0.5,
+          });
+        } else {
+          links.push({
+            id: `fallback-${spoke.hub_id}-${spoke.id}`,
+            source: spoke.hub_id,
+            target: spoke.id,
+            kind: "supply-route",
+            weight: 0.5,
+          });
+        }
       }
     }
 
@@ -241,6 +267,20 @@ export function NetworkTopology() {
         ctx.setLineDash([6, 4]);
         ctx.strokeStyle = LINK_COLORS["hub-mesh"];
         ctx.lineWidth = 1.5;
+      } else if (link.kind === "spoke-to-spoke") {
+        ctx.setLineDash([4, 3]);
+        const w = link.weight ?? 0.5;
+        ctx.lineWidth = MIN_WIDTH + w * (MAX_WIDTH - MIN_WIDTH) * 0.7;
+        ctx.strokeStyle = link.routeStatus
+          ? (ROUTE_STATUS_COLORS[link.routeStatus] || LINK_COLORS["spoke-to-spoke"])
+          : LINK_COLORS["spoke-to-spoke"];
+      } else if (link.kind === "spoke-to-child") {
+        ctx.setLineDash([2, 2]);
+        const w = link.weight ?? 0.5;
+        ctx.lineWidth = MIN_WIDTH + w * (MAX_WIDTH - MIN_WIDTH) * 0.5;
+        ctx.strokeStyle = link.routeStatus
+          ? (ROUTE_STATUS_COLORS[link.routeStatus] || LINK_COLORS["spoke-to-child"])
+          : LINK_COLORS["spoke-to-child"];
       } else {
         ctx.setLineDash([]);
         const w = link.weight ?? 0.5;
@@ -265,7 +305,7 @@ export function NetworkTopology() {
       ctx.setLineDash([]);
 
       // Transport mode + transit time label on supply routes
-      if (link.kind === "supply-route" && t.k > 0.6) {
+      if (link.kind !== "hub-mesh" && t.k > 0.6) {
         const mx = (s.x + tgt.x) / 2;
         const my = (s.y + tgt.y) / 2;
         ctx.font = `${9 / t.k}px Inter, system-ui, sans-serif`;
@@ -344,7 +384,7 @@ export function NetworkTopology() {
       const sx = hovNode.x * t.k + t.x;
       const sy = hovNode.y * t.k + t.y;
       drawNodeTooltip(ctx, hovNode, sx, sy, width);
-    } else if (hovLink && hovLink.kind === "supply-route") {
+    } else if (hovLink && hovLink.kind !== "hub-mesh") {
       const s = hovLink.source as GraphNode;
       const tgt = hovLink.target as GraphNode;
       if (s.x != null && s.y != null && tgt.x != null && tgt.y != null) {
@@ -634,7 +674,7 @@ export function NetworkTopology() {
 
   const connectedRoutes = useMemo(() => {
     if (!selectedNode || !routes) return [];
-    return routes.filter((r) => r.hub_id === selectedNode.id || r.spoke_id === selectedNode.id);
+    return routes.filter((r) => r.source_node_id === selectedNode.id || r.dest_node_id === selectedNode.id);
   }, [selectedNode, routes]);
 
   return (
