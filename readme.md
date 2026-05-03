@@ -126,9 +126,7 @@ This will spin up:
 
 ## Access Points
 
-* Frontend UI: http://localhost:3000
-* Backend API: http://localhost:8000
-* Health Check: http://localhost:8000/healthz
+* Frontend UI: https://mdm-hospital-plus-plus.replit.app/
 
 ---
 
