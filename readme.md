@@ -50,38 +50,36 @@ It is designed for transparency, operational realism, and rapid decision support
 
 ---
 
-## Repository Layout
+## Repository Structure
 
-```text
+```bash
 .
 ├── app/
-│   ├── backend/                        # FastAPI backend
-│   │   ├── main.py                     # App entrypoint + router registration
+│   ├── backend/                        # FastAPI backend (APIs, services, ML integration)
+│   │   ├── main.py                     # Application entrypoint
 │   │   ├── requirements.txt            # Backend dependencies
-│   │   ├── seed.py                     # Optional DB seed script
-│   │   ├── models/                     # SQLAlchemy models + schemas + DB setup
-│   │   ├── routers/                    # API routes (hubs, spokes, inventory, etc.)
-│   │   └── services/                   # Ingestion, ML interface, EBM, chat, NATS
-│   └── frontend/                       # React + Vite + TypeScript frontend
+│   │   ├── seed.py                     # Optional database seeding
+│   │   ├── models/                     # SQLAlchemy models and schemas
+│   │   ├── routers/                    # API routes (hubs, spokes, inventory, analytics)
+│   │   └── services/                   # Ingestion, EBM, ML interface, NATS, chat
+│   └── frontend/                       # React + TypeScript frontend
 │       ├── src/
-│       │   ├── pages/                  # Dashboard, MapView, Inventory, Explainability...
-│       │   ├── components/             # UI and layout components
-│       │   ├── hooks/                  # websocket/chart/debounce hooks
-│       │   ├── contexts/               # Shared app context
-│       │   └── lib/                    # API client utilities
+│       │   ├── pages/                  # Dashboard, MapView, Inventory, Explainability
+│       │   ├── components/             # Reusable UI components
+│       │   ├── hooks/                  # WebSocket, charts, utilities
+│       │   ├── contexts/               # Global state/context
+│       │   └── lib/                    # API clients and helpers
 │       ├── package.json
 │       └── Dockerfile
 │
-├── ml/                                 # ML integration scaffolding and configs
-│   ├── README.md
+├── ml/                                 # ML pipeline scaffolding
 │   ├── config/model_config.yaml
 │   ├── training/
 │   ├── serving/
 │   └── data_pipeline/
 │
-├── ml_models/                          # EBM/ML experimentation + artifacts tooling
-│   ├── README.md
-│   ├── app.py                          # Streamlit app
+├── ml_models/                          # EBM + experimental ML modules
+│   ├── app.py                          # Streamlit experimentation UI
 │   ├── ebm_model.py
 │   ├── train_ebm_pkl.py
 │   ├── advanced_ml.py
@@ -89,50 +87,81 @@ It is designed for transparency, operational realism, and rapid decision support
 │   ├── model.py
 │   └── requirements.txt
 │
-├── data/                               # Sample/source datasets
+├── data/                               # Sample datasets
 │   ├── Medical_Supply_Inventory.csv
 │   └── MedSupply_Data_Tables.xlsx
 │
-├── notebooks/                          # Analysis and prototype notebooks
-├── docker-compose.yaml                 # Multi-service local deployment
-├── problem.md                          # Problem framing and operational context
+├── notebooks/                          # Exploratory analysis
+├── docker-compose.yaml                 # Multi-service deployment
+├── problem.md                          # Problem framing
 ├── logo.png
-└── readme.md
+└── README.md
+```
 
-- Optional for local dev: Python 3.10+ and Node 18+
-
-### Run with Docker
-```bash
-docker compose up --build
 ---
 
 ## Getting Started
-Prerequisites
-Docker + Docker Compose
-(Optional for local non-Docker dev) Python 3.10+ and Node.js 18+
-Quick Start (Recommended)
-Build and start all services:
+
+### Prerequisites
+
+* Docker + Docker Compose
+* (Optional) Python 3.10+ and Node.js 18+ for local development
+
+### Quick Start (Recommended)
+
+Run the full system using Docker:
+
+```bash
 docker compose up --build
+```
+
+This will spin up:
+
+* Backend (FastAPI)
+* Frontend (React)
+* PostgreSQL database
+* NATS messaging system
 
 ---
 
-### Operational Use Case
-Hospital++ is built for scenarios where:
+## Access Points
 
-A central medical hub is constrained by demand, transport, or cold-chain limits
-Spoke nodes depend on timely replenishment
-Supply perishability and route disruption create cascading risk
-Decision-makers need actionable, explainable readiness signals
+* Frontend UI: http://localhost:3000
+* Backend API: http://localhost:8000
+* Health Check: http://localhost:8000/healthz
 
 ---
 
-### Acknowledgments
-We acknowledge the mentors, judges, and operators who shaped this project’s focus on:
-practical logistics realism
-interpretable model behavior
-decision-centered UX for high-stakes planning
-Project Status
+## Operational Use Case
+
+Hospital++ is designed for high-risk, distributed medical logistics environments where:
+
+* A central hub is constrained by demand, transport delays, or cold-chain limitations
+* Spoke nodes depend on timely resupply
+* Supply perishability introduces time-sensitive risk
+* Disruptions can cascade across the network
+
+The platform provides **early warning signals and explainable insights** so decision-makers can act before failure occurs.
+
+---
+
+## Acknowledgments
+
+We acknowledge the mentors, judges, and domain experts who guided this project’s focus on:
+
+* Operational realism
+* Interpretable machine learning
+* Decision-centered user experience
+
+---
+
+## Project Status
+
 Hackathon prototype under active development.
-APIs, UI behavior, and model interfaces may evolve as the platform matures.
----
 
+* Core APIs and frontend implemented
+* EBM-based risk modeling integrated (baseline)
+* Explainability workflows in progress
+* APIs, UI, and ML components are evolving as the system matures
+
+---
