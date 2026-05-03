@@ -104,6 +104,7 @@ It is designed for transparency, operational realism, and rapid decision support
 ### Run with Docker
 ```bash
 docker compose up --build
+---
 
 ## Getting Started
 Prerequisites
@@ -113,7 +114,9 @@ Quick Start (Recommended)
 Build and start all services:
 docker compose up --build
 
-Operational Use Case
+---
+
+### Operational Use Case
 Hospital++ is built for scenarios where:
 
 A central medical hub is constrained by demand, transport, or cold-chain limits
@@ -121,14 +124,15 @@ Spoke nodes depend on timely replenishment
 Supply perishability and route disruption create cascading risk
 Decision-makers need actionable, explainable readiness signals
 
+---
+
 ### Acknowledgments
 We acknowledge the mentors, judges, and operators who shaped this project’s focus on:
-
 practical logistics realism
 interpretable model behavior
 decision-centered UX for high-stakes planning
 Project Status
 Hackathon prototype under active development.
 APIs, UI behavior, and model interfaces may evolve as the platform matures.
-
+---
 
