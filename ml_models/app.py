@@ -170,7 +170,7 @@ def main():
             return f'background-color: {color}; color: white'
         
         st.dataframe(
-            display_df.style.applymap(color_risk, subset=['Risk Level']),
+            display_df.style.map(color_risk, subset=['Risk Level']),
             use_container_width=True
         )
         
@@ -186,7 +186,7 @@ def main():
                 values=risk_counts.values, 
                 names=risk_counts.index,
                 color=risk_counts.index,
-                color_map={'LOW': '#28a745', 'MEDIUM': '#ffc107', 'HIGH': '#dc3545'},
+                color_discrete_map={'LOW': '#28a745', 'MEDIUM': '#ffc107', 'HIGH': '#dc3545'},
                 title="Nodes by Risk Level"
             )
             st.plotly_chart(fig, use_container_width=True)
